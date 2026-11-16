@@ -29,7 +29,9 @@ Fight details depend on what the client exposes. Rivals counts killing blows fro
 
 ![World PvP encounters, outcomes, locations, and available damage.](Docs/01-world-pvp-history.png)
 
-![The enemy mark preview and kill-based scaling settings.](Docs/02-nameplate-marks.png)
+![PvP results by opponent, with kills, deaths, and the last encounter.](Docs/02-player-summary.png)
+
+![The enemy mark preview and kill-based scaling settings.](Docs/03-nameplate-marks.png)
 
 ## License and credits
 
