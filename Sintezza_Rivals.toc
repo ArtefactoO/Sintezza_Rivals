@@ -1,0 +1,46 @@
+## Interface: 16001
+## Title: Sintezza Rivals
+## Author: Sintezza
+## X-License: MIT
+## Notes: World PvP journal, battleground history and nameplate markers.
+## Notes-ruRU: История мирового PvP и полей боя, метки противников.
+## Version: 1.13.7
+## IconTexture: Interface\AddOns\Sintezza_Theme\Media\Icons\Sintezza_Rivals
+## Category: PvP
+## SavedVariablesPerCharacter: Sintezza_RivalsDB, Sintezza_RivalsPvPDB, Sintezza_RivalsPvPCharDB
+## Dependencies: Sintezza_Theme
+## OptionalDeps: Sintezza_UI, EllesmereUINameplates, TomTom
+
+
+Locales.lua
+Launcher.lua
+Theme.lua
+History.lua
+Nameplates.lua
+Options.lua
+PvPBootstrap.lua
+# WoW loads the root Bindings.xml automatically.
+PvP\Core\Core.lua
+PvP\Core\Locales.lua
+PvP\Theme\Theme.lua
+PvP\Theme\Widgets.lua
+PvP\Modules\Sightings.lua
+PvP\Modules\Deaths.lua
+PvP\Modules\Duels.lua
+PvP\Modules\Watchlist.lua
+PvP\Map\Map.xml
+PvP\Map\Map.lua
+PvP\Map\Minimap.lua
+PvP\UI\Base.lua
+PvP\UI\Popups.lua
+PvP\UI\List.lua
+PvP\UI\Tabs.lua
+PvP\UI\Stats.lua
+PvP\UI\Card.lua
+PvP\UI\Help.lua
+PvP\UI\Window.lua
+PvP\Modules\HUD.lua
+PvP\Options\Options.lua
+Data.lua
+PvP\Options\Pages.lua
+PvPIntegration.lua

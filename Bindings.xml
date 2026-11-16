@@ -1,0 +1,11 @@
+<Bindings>
+	<Binding name="RIVALSPVP_TOGGLE" category="BINDING_HEADER_RIVALSPVP">
+		if Sintezza_RivalsPvP and Sintezza_RivalsPvP.UI then Sintezza_RivalsPvP.UI:Toggle() end
+	</Binding>
+	<Binding name="RIVALSPVP_WATCH" category="BINDING_HEADER_RIVALSPVP">
+		if Sintezza_RivalsPvP and Sintezza_RivalsPvP.Watchlist then Sintezza_RivalsPvP.Watchlist:WatchTarget() end
+	</Binding>
+	<Binding name="RIVALSPVP_HUD" category="BINDING_HEADER_RIVALSPVP">
+		if Sintezza_RivalsPvP and Sintezza_RivalsPvP.HUD then Sintezza_RivalsPvP.HUD:Toggle() end
+	</Binding>
+</Bindings>

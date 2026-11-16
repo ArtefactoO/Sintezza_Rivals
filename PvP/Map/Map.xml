@@ -1,0 +1,7 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+	<!-- The pin the world map hands out for Sintezza Rivals: the map owns it, positions it
+	     and scales it; the mixin in Map.lua dresses it and answers the mouse. -->
+	<Frame name="Sintezza_RivalsPvPPinTemplate" mixin="Sintezza_RivalsPvPPinMixin" enableMouse="true" virtual="true">
+		<Size x="11" y="11"/>
+	</Frame>
+</Ui>
