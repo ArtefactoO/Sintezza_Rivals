@@ -3,7 +3,7 @@ local ADDON, root = ...
 local ns = root.PvP
 _G.Sintezza_RivalsPvP = ns
 
-ns.version = "1.13.7"
+ns.version = "1.13.9"
 ns.modules = ns.modules or {}
 ns.WindowAppearance = Sintezza_Theme:NewWindowPreferences(function()
 	local db = Sintezza_RivalsPvPDB

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.13.9
+
+- Updated the project logo and in-game addon icon.
+
+### По-русски
+
+- Обновлены логотип проекта и игровая иконка аддона.
+
 ## 1.13.7
 
 - Localized the encounter bar tooltip, watched enemy banner, and remaining labels in the chat reports.
