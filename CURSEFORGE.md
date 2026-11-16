@@ -24,10 +24,10 @@ Mark rivals on enemy nameplates, show world fights on the map, or put an opponen
 
 Install and enable [Sintezza Theme](https://github.com/ArtefactoO/Sintezza_Theme). Optional integrations support [EllesmereUI Nameplates](https://www.curseforge.com/wow/addons/ellesmereui), [OpenMap](https://www.curseforge.com/wow/addons/openmap), [TomTom](https://www.curseforge.com/wow/addons/tomtom), and the [Sintezza UI](https://github.com/ArtefactoO/Sintezza_UI) party map button.
 
-## Changelog
+<!-- Changelog field -->
+
+### Changelog
 
 [View the release history on GitHub](https://github.com/ArtefactoO/Sintezza_Rivals/blob/main/CHANGELOG.md).
 
-## Source
-
-https://github.com/ArtefactoO/Sintezza_Rivals
+Source, installation details, and credits are available on [GitHub](https://github.com/ArtefactoO/Sintezza_Rivals).
