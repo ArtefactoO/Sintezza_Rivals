@@ -3,7 +3,7 @@ local ADDON, root = ...
 local ns = root.PvP
 _G.Sintezza_RivalsPvP = ns
 
-ns.version = "1.13.9"
+ns.version = "1.14.0"
 ns.modules = ns.modules or {}
 ns.WindowAppearance = Sintezza_Theme:NewWindowPreferences(function()
 	local db = Sintezza_RivalsPvPDB
@@ -11,6 +11,9 @@ ns.WindowAppearance = Sintezza_Theme:NewWindowPreferences(function()
 end, function(ui)
 	return { scale = (tonumber(ui.scale) or 1) * 100, opacity = (tonumber(ui.alpha) or 1) * 100, locked = ui.locked }
 end)
+if Sintezza_Theme.RegisterGlobalWindowPreferences then
+    Sintezza_Theme:RegisterGlobalWindowPreferences("Sintezza Rivals", ns.WindowAppearance)
+end
 
 function ns.WindowAppearance:OnReset()
 	local ui = Sintezza_RivalsPvPDB.settings.ui

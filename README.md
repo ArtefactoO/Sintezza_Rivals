@@ -20,7 +20,7 @@ Fight details depend on what the client exposes. Rivals counts killing blows fro
 | Command | Opens |
 | --- | --- |
 | `/rivals` | Main window |
-| `/rivals history` | PvP history. Right-click the minimap swords for the same window |
+| `/rivals history` | Open PvP history |
 | `/rivals marks` | Nameplate settings and preview |
 | `/rivals csv` | Import and export |
 | `/rivals test` / `/rivals test stop` | Start or stop an unsaved PvP preview |

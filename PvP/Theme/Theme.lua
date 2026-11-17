@@ -176,6 +176,7 @@ function Theme.Window(opts)
 	local header = widgets:WindowHeader(f, {
 		icon = opts.icon or Sintezza_Theme.icons.Sintezza_Rivals,
 		title = L(opts.title),
+		addonName = opts.addonName,
 		subtitle = L(opts.subtitle) or "",
 	})
 	f.header, f.title, f.subtitle, f.closeButton = header, header.title, header.subtitle, header.close

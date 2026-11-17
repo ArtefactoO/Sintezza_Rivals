@@ -202,7 +202,7 @@ local function build()
 		defaultW = X.W, defaultH = X.H,
 		minW = minW, minH = minH, key = ui, resizable = true,
 		windowAppearance = ns.WindowAppearance,
-		title = "Sintezza Rivals",
+		title = "Sintezza Rivals", addonName = "Sintezza_Rivals",
 		subtitle = "open-world intel: who is out there, who keeps killing you, and where",
 	})
 

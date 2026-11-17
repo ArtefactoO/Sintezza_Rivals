@@ -1,12 +1,32 @@
 # Changelog
 
-## 1.13.9
+## 1.14.0
+
+- The version appears next to the title in the settings window.
+- The PvP history window shows the version beside the title.
+- Marker preview and kill-based scaling use shared section headings.
+
+- Left-clicking the minimap icon opens or closes the window.
+
+- Connected window scale, opacity, and layer to the shared Theme settings. The WoW AddOns settings launcher uses the shared Theme helper.
 
 - Updated the project logo and in-game addon icon.
 
+- Enable OpenMap projection and map callbacks when the required functions are available.
+
 ### По-русски
 
+- Версия отображается рядом с названием в окне настроек.
+- В шапке истории PvP версия отображается рядом с названием.
+- Настройки предпросмотра меток и масштаба по убийствам используют общие заголовки.
+
+- ЛКМ по значку у миникарты открывает или закрывает окно.
+
+- Масштаб, непрозрачность и слой окон подключены к общим настройкам Theme. Страница в меню модификаций использует общую реализацию Theme.
+
 - Обновлены логотип проекта и игровая иконка аддона.
+
+- PvP-метки в OpenMap используют доступные функции проекции и обновления карты.
 
 ## 1.13.7
 

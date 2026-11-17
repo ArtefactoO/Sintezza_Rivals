@@ -132,16 +132,23 @@ local function ThresholdInput(parent, get, set, showError)
     return edit
 end
 
+local function MarkerSection(parent, title, rightInset)
+    local section = widgets:Section(parent, title, nil, "settings")
+    section:SetPoint("TOPLEFT")
+    section:SetPoint("TOPRIGHT", -rightInset, 0)
+    section:SetHeight(section.headerHeight)
+    return section
+end
+
 local function BuildThresholdPanel(frame, preview, controls, getKind)
-    local rules = Frame(frame, T.panel, T.lineSoft)
+    local rules = CreateFrame("Frame", nil, frame)
     rules:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -12)
     rules:SetPoint("TOPRIGHT", controls, "BOTTOMRIGHT", 0, -12)
-    local heading = Label(rules, Text("Масштаб по убийствам", "Scale by kills"), 13, T.accent)
-    heading:SetPoint("TOPLEFT", 12, -12)
+    local heading = MarkerSection(rules, Text("Масштаб по убийствам", "Scale by kills"), 130)
     if widgets.Help then
-        widgets:Help(rules, Text(
+        widgets:Help(heading, Text(
             "Увеличивает метку по заданным порогам. Действует прибавка с самого высокого достигнутого порога.",
-            "Increases the marker size at configured thresholds. The highest reached threshold supplies the bonus."), heading)
+            "Increases the marker size at configured thresholds. The highest reached threshold supplies the bonus."), heading.title)
     end
     local toggle = widgets:Toggle(rules, Text("Включить", "Enable"),
         function() return ns.MarkerScaling(getKind()).enabled end,
@@ -239,12 +246,15 @@ function ns.BuildMarkerControls(frame, top)
     T:DropdownArrow(category, category.label)
     category:SetPoint("TOPLEFT", 16, top)
 
-    local preview = Frame(frame, T.panel, T.lineSoft)
+    local preview = CreateFrame("Frame", nil, frame)
     preview:SetSize(284, 194)
     preview:SetPoint("TOPLEFT", category, "BOTTOMLEFT", 0, -8)
-    Label(preview, Text("Предпросмотр", "Preview"), 11, T.muted):SetPoint("TOPLEFT", 12, -10)
+    MarkerSection(preview, Text("Предпросмотр", "Preview"), 130)
     local previewSource = Label(preview, "", 10, T.dim)
-    previewSource:SetPoint("TOPRIGHT", -12, -11)
+    previewSource:SetPoint("TOPRIGHT", -12, -7)
+    previewSource:SetWidth(112)
+    previewSource:SetJustifyH("RIGHT")
+    previewSource:SetWordWrap(false)
     local stage = Frame(preview, T.bg, T.lineSoft)
     stage:SetPoint("TOPLEFT", 11, -31)
     stage:SetPoint("TOPRIGHT", -11, -31)
@@ -458,5 +468,5 @@ function ns.RegisterLaunchers()
     local icon = Sintezza_Theme.icons.Sintezza_Rivals
     ns.Launcher:RegisterMinimap(title, icon, ns.db.minimap, function()
         if ns.PvP and ns.PvP.UI then ns.PvP.UI:Toggle() end
-    end, ns.ToggleJournal, historyTitle)
+    end)
 end

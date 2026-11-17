@@ -162,7 +162,7 @@ local function buildRow(i)
 	r.cls:Hide()
 	r.classBorder = root.Theme:FrameIcon(r, r.cls)
 	r.classBorder:Hide()
-	r.groupArrow = root.Theme:Glyph(r, "chevron", GROUP_ARROW_WIDTH)
+	r.groupArrow = root.Theme:DisclosureArrow(r, GROUP_ARROW_WIDTH)
 	r.groupArrow:Hide()
 	r.participantMarker = root.CreateParticipantMarker(r)
 
@@ -257,7 +257,7 @@ local function paint(r, desc, index, cols)
 	local marker
 	r.groupArrowX = nil
 	if desc.groupExpanded ~= nil then
-		r.groupArrow:SetRotation(desc.groupExpanded and -math.pi / 2 or 0)
+		r.groupArrow:SetExpanded(desc.groupExpanded)
 		marker = r.groupArrow
 		r.groupArrowX = nameX
 	elseif desc.participant then

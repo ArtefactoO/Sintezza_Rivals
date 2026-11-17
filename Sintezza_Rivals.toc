@@ -4,7 +4,7 @@
 ## X-License: MIT
 ## Notes: World PvP journal, battleground history and nameplate markers.
 ## Notes-ruRU: История мирового PvP и полей боя, метки противников.
-## Version: 1.13.9
+## Version: 1.14.0
 ## IconTexture: Interface\AddOns\Sintezza_Theme\Media\Icons\Sintezza_Rivals
 ## Category: PvP
 ## SavedVariablesPerCharacter: Sintezza_RivalsDB, Sintezza_RivalsPvPDB, Sintezza_RivalsPvPCharDB

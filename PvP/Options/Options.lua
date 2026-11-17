@@ -106,7 +106,7 @@ local function build()
 
 	panel = T.Window({
 		name = "Sintezza_RivalsPvPOptions", width = W, height = H,
-		resizable = true, minW = W, minH = 520, title = "Sintezza Rivals",
+		resizable = true, minW = W, minH = 520, title = "Sintezza Rivals", addonName = "Sintezza_Rivals",
 		windowAppearance = ns.WindowAppearance, defaultLayer = "DIALOG",
 	})
 	O.Panel = panel
@@ -180,31 +180,15 @@ function O:Open(key)
 	panel:Raise()
 end
 
--- a small entry in the Blizzard settings list, so the addon is discoverable
--- there without squeezing a whole settings page into that canvas
-local function registerStub()
-	if not (Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory) then return end
-	local stub = CreateFrame("Frame", "Sintezza_RivalsPvPSettingsStub", UIParent)
-	stub:SetSize(500, 200)
-	stub.name = "Sintezza Rivals"
-	local t = stub:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	local icon = stub:CreateTexture(nil, "ARTWORK")
-	icon:SetSize(24, 24)
-	icon:SetPoint("TOPLEFT", 16, -16)
-	icon:SetTexture(Sintezza_Theme.icons.Sintezza_Rivals)
-	t:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-	t:SetText("Sintezza Rivals " .. ns.version)
-	local widgets = Sintezza_Theme:CreateWidgets(root.Theme)
-	local b = widgets:Button(stub, root.Text("Открыть настройки", "Open settings"), function() O:Open() end)
-	b:SetSize(220, 26)
-	b:SetPoint("TOPLEFT", icon, "BOTTOMLEFT", 0, -16)
-	local ok, cat = pcall(Settings.RegisterCanvasLayoutCategory, stub, "Sintezza Rivals")
-	if ok and cat then
-		O.category = cat
-		pcall(Settings.RegisterAddOnCategory, cat)
-	end
-end
-
 function O:Enable()
-	registerStub()
+	local shared = Sintezza_Theme
+	if self.category or not shared.RegisterLauncherPage then return end
+	self.category = shared:RegisterLauncherPage({
+		title = "Sintezza Rivals",
+		icon = shared.icons.Sintezza_Rivals,
+		buttonLabel = root.Text("Открыть настройки", "Open settings"),
+		open = function() self:Open() end,
+		appearance = root.Theme,
+		keepSettingsOpen = true,
+	})
 end

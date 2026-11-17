@@ -23,8 +23,8 @@ local function update() M:Update() end
 
 local function stitchedAPI()
 	local api = _G.OpenMapAPI
-	if api and api.major == 1 and type(api.WorldFromMap) == "function"
-		and type(api.MapFromWorld) == "function" and root.Read(api.IsStitched) then return api end
+	if type(api) == "table" and type(api.WorldFromMap) == "function" and type(api.MapFromWorld) == "function"
+		and type(api.IsStitched) == "function" and root.Read(api.IsStitched) then return api end
 end
 
 ----------------------------------------------------------------- the look of a pin
@@ -422,8 +422,10 @@ end
 
 local function watchOpenMap()
 	local api = _G.OpenMapAPI
-	if api == watchedAPI or not (api and api.major == 1 and type(api.RegisterCallback) == "function") then return end
-	if watchedAPI and watchedAPI.UnregisterAllCallbacks then watchedAPI.UnregisterAllCallbacks(M) end
+	if api == watchedAPI then return end
+	if watchedAPI and type(watchedAPI.UnregisterAllCallbacks) == "function" then watchedAPI.UnregisterAllCallbacks(M) end
+	watchedAPI = nil
+	if type(api) ~= "table" or type(api.RegisterCallback) ~= "function" then return end
 	watchedAPI = api
 	api.RegisterCallback(M, "OpenMap_StitchedChanged", queueUpdate)
 	api.RegisterCallback(M, "OpenMap_ViewChanged", function()
