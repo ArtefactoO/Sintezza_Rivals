@@ -8,7 +8,7 @@ ns.modules.Sightings = S
 
 local now = _G.GetServerTime or time
 local Safe = ns.Safe
-local CAP = 500
+local CAP = ns.SIGHTING_LIMIT or 1000
 
 ----------------------------------------------------------------- helpers
 local function try(fn, ...)
@@ -72,17 +72,103 @@ local function bumpZone(mapID, zone, ts)
 	z.lastActivity = ts
 end
 
-local function evict()
-	local db = Sintezza_RivalsPvPDB.sightings
-	local n = 0
-	for _ in pairs(db) do n = n + 1 end
-	while n > CAP do
-		local oldestKey, oldestTs
-		for k, r in pairs(db) do
-			if not oldestTs or (r.lastSeen or 0) < oldestTs then oldestKey, oldestTs = k, r.lastSeen or 0 end
+local retentionHeap, retentionPositions = {}, {}
+local indexedArchive = setmetatable({}, { __mode = "v" })
+
+local function SeenTime(record)
+	local value = type(record) == "table" and tonumber(record.lastSeen) or 0
+	return value and value == value and value or 0
+end
+
+local function Older(firstTime, firstKey, secondTime, secondKey)
+	return firstTime < secondTime or (firstTime == secondTime and tostring(firstKey) < tostring(secondKey))
+end
+
+local function SiftUp(position)
+	local entry = retentionHeap[position]
+	while position > 1 do
+		local parent = math.floor(position / 2)
+		local other = retentionHeap[parent]
+		if not Older(entry.seen, entry.key, other.seen, other.key) then break end
+		retentionHeap[position] = other
+		retentionPositions[other.key] = position
+		position = parent
+	end
+	retentionHeap[position] = entry
+	retentionPositions[entry.key] = position
+	return position
+end
+
+local function SiftDown(position)
+	local entry = retentionHeap[position]
+	local size = #retentionHeap
+	while position * 2 <= size do
+		local child = position * 2
+		local first, second = retentionHeap[child], retentionHeap[child + 1]
+		if second and Older(second.seen, second.key, first.seen, first.key) then
+			child = child + 1
+			first = second
 		end
-		db[oldestKey] = nil
-		n = n - 1
+		if not Older(first.seen, first.key, entry.seen, entry.key) then break end
+		retentionHeap[position] = first
+		retentionPositions[first.key] = position
+		position = child
+	end
+	retentionHeap[position] = entry
+	retentionPositions[entry.key] = position
+end
+
+local function RetainKey(key, seen)
+	local position = retentionPositions[key]
+	if position then
+		local entry = retentionHeap[position]
+		if entry.seen == seen then return end
+		entry.seen = seen
+		SiftDown(SiftUp(position))
+		return
+	end
+	if #retentionHeap < CAP then
+		local last = #retentionHeap + 1
+		retentionHeap[last] = { key = key, seen = seen }
+		SiftUp(last)
+		return
+	end
+	local oldest = retentionHeap[1]
+	if not Older(oldest.seen, oldest.key, seen, key) then return key end
+	local removed = oldest.key
+	retentionPositions[removed] = nil
+	oldest.key, oldest.seen = key, seen
+	retentionPositions[key] = 1
+	SiftDown(1)
+	return removed
+end
+
+local function RebuildRetention(archive)
+	indexedArchive[1] = nil
+	retentionHeap, retentionPositions = {}, {}
+	for key, record in pairs(archive) do RetainKey(key, SeenTime(record)) end
+	for key in pairs(archive) do
+		if not retentionPositions[key] then archive[key] = nil end
+	end
+	indexedArchive[1] = archive
+end
+
+function S:InvalidateRetention()
+	indexedArchive[1] = nil
+	retentionHeap, retentionPositions = {}, {}
+end
+
+function S:Init()
+	RebuildRetention(Sintezza_RivalsPvPDB.sightings)
+end
+
+local function RetainObservation(key, record)
+	local archive = Sintezza_RivalsPvPDB.sightings
+	if indexedArchive[1] ~= archive then
+		RebuildRetention(archive)
+	else
+		local removed = RetainKey(key, SeenTime(record))
+		if removed then archive[removed] = nil end
 	end
 end
 
@@ -181,6 +267,8 @@ function S:Consider(unit, source)
 		end
 	end
 
+	RetainObservation(key, rec)
+
 	-- feed the killer-guess contact list (no combat log on this client)
 	if ns.Deaths then ns.Deaths:Contact(rec, source) end
 
@@ -190,13 +278,38 @@ function S:Consider(unit, source)
 
 	if isNew then
 		bumpZone(rec.lastMapID, rec.lastZone, ts)
-		S:Alert(rec)
+		S:Alert(rec, key)
 		if ns.UI then ns.UI:MarkDirty() end
-		evict()
 	end
 end
 
 local watchAlerted = {}
+
+local function alertSound(stealthy)
+	local kits = SOUNDKIT
+	if type(kits) ~= "table" then return end
+	local primary = stealthy and kits.UI_RAID_BOSS_WHISPER_WARNING or kits.RAID_WARNING
+	if type(primary) == "number" and primary > 0 then return primary end
+	for _, name in ipairs({ "RAID_WARNING", "UI_RAID_BOSS_WHISPER_WARNING" }) do
+		local kit = kits[name]
+		if type(kit) == "number" and kit > 0 then return kit end
+	end
+end
+
+function S:CanPlayAlertSound()
+	return type(PlaySound) == "function" and alertSound(false) ~= nil
+end
+
+function S:HasAlternateAlertSound()
+	return self:CanPlayAlertSound() and alertSound(true) ~= alertSound(false)
+end
+
+function S:PlayAlertSound(stealthy)
+	local kit = alertSound(stealthy)
+	if not kit or type(PlaySound) ~= "function" then return false end
+	local ok, played = pcall(PlaySound, kit)
+	return ok and played ~= false
+end
 
 function S:WatchAlert(key, rec, source)
 	local a = Sintezza_RivalsPvPDB.settings.alerts
@@ -215,12 +328,9 @@ function S:WatchAlert(key, rec, source)
 			("%s %s, %s (%s)"):format(class or rec.class or "?", tostring(rec.level or "?"), where, ns.L(source or "unknown")),
 			rec.class)
 	end
-	if a.soundOnSighting and SOUNDKIT and not UnitOnTaxi("player") then
-		-- rogues and druids are the ambushers; a different sound tells you which
-		-- kind of trouble it is before you look
+	if a.soundOnSighting and not UnitOnTaxi("player") then
 		local stealthy = a.stealthSound and (rec.class == "ROGUE" or rec.class == "DRUID")
-		pcall(PlaySound, stealthy and (SOUNDKIT.UI_RAID_BOSS_WHISPER_WARNING or SOUNDKIT.RAID_WARNING)
-			or SOUNDKIT.RAID_WARNING)
+		self:PlayAlertSound(stealthy)
 	end
 end
 
@@ -234,8 +344,9 @@ function S.TooLow(rec)
 	return myLevel > 0 and (rec.level - myLevel) <= diff
 end
 
-function S:Alert(rec)
-	if not Sintezza_RivalsPvPDB.settings.alerts.chat.sighting or S.TooLow(rec) then return end
+function S:Alert(rec, key)
+	local db = Sintezza_RivalsPvPDB
+	if db.ignore[key or rec.guid or rec.name] or not db.settings.alerts.chat.sighting or S.TooLow(rec) then return end
 	ns:Notify("sighting", "%s (%s) spotted in %s",
 		classColor(rec.class, rec.name or "?"), tostring(rec.level or "?"),
 		(rec.lastSubZone ~= "" and rec.lastSubZone) or rec.lastZone or "?")
@@ -361,9 +472,12 @@ local function onCastStart(_, unit, _, spellID)
 	if not ns:IsRecording("enemies") then return end
 	if not Sintezza_RivalsPvPDB.settings.alerts.stealthCast then return end
 	if type(unit) ~= "string" or not string.find(unit, "^nameplate") then return end
+	spellID = Safe(spellID)
 	if not STEALTH[spellID or 0] then return end
 	if not Safe(UnitIsPlayer(unit)) or not Safe(UnitCanAttack("player", unit)) then return end
 	local name = ns.UnitCharacterName(unit) or ns.L("someone")
+	local guid = try(UnitGUID, unit)
+	if Sintezza_RivalsPvPDB.ignore[guid or name] then return end
 	if (now() - (lastStealthAlert[name] or 0)) < 20 then return end
 	-- keyed by enemy name, so expired entries go before a new one is added
 	for who, ts in pairs(lastStealthAlert) do
@@ -376,8 +490,8 @@ local function onCastStart(_, unit, _, spellID)
 		ns.UI:Banner(ns.L("%s went into stealth"):format(name), ns.L("within nameplate range"), class,
 			{ tag = ns.L("|cffff5555STEALTH|r") })
 	end
-	if Sintezza_RivalsPvPDB.settings.alerts.soundOnSighting and SOUNDKIT and not UnitOnTaxi("player") then
-		pcall(PlaySound, SOUNDKIT.UI_RAID_BOSS_WHISPER_WARNING or SOUNDKIT.RAID_WARNING)
+	if Sintezza_RivalsPvPDB.settings.alerts.soundOnSighting and not UnitOnTaxi("player") then
+		S:PlayAlertSound(true)
 	end
 end
 

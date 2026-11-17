@@ -14,7 +14,7 @@ local function RecapParticipants(db)
     local participants = {}
     for _, fight in ipairs(db.deaths or {}) do
         if fight.killerSource == "death recap" then
-            for _, player in ipairs(fight.attackers or {}) do
+            for _, player in ipairs(fight.combatAttackers or fight.attackers or {}) do
                 if ns.IsPlayerGUID(player.guid) then participants[player.guid] = participants[player.guid] or "attacker" end
             end
             local killer = fight.verifiedKiller and Source:RecapKiller(fight)
@@ -115,6 +115,27 @@ function Source:RecapKiller(death)
     return merged
 end
 
+local function CombatPlayer(record, player)
+    if not player then return end
+    for _, attacker in ipairs(record and record.combatAttackers or {}) do
+        if SamePlayer(attacker, player) then
+            local result = {}
+            for field, value in pairs(player) do result[field] = value end
+            for field, value in pairs(attacker) do
+                if result[field] == nil or field == "damage" then result[field] = value end
+            end
+            return result
+        end
+    end
+    return player
+end
+
+local function CombatKey(record)
+    if record and record.meterSession and record.meterStartedAt then
+        return record.meterSession .. "/" .. record.meterStartedAt
+    end
+end
+
 local function Participants(death, verified, killer)
     local participants = {}
     local function Add(player)
@@ -124,6 +145,8 @@ local function Participants(death, verified, killer)
         end
         participants[#participants + 1] = player
     end
+    local complete = death and death.combatAttackers or verified and verified.combatAttackers
+    for _, player in ipairs(complete or {}) do Add(player) end
     for _, player in ipairs(death and death.killerSource == "death recap" and death.attackers or {}) do Add(player) end
     for _, player in ipairs(verified and verified.helpers or {}) do Add(player) end
     return participants
@@ -157,7 +180,8 @@ function Source:WorldOutcomes(db)
             or ((death.verifiedKiller or not verified) and Source:RecapKiller(death) or nil)
         local started = type(death.combatSeconds) == "number" and death.combatSeconds >= 0
             and (death.ts or 0) - death.combatSeconds or nil
-        records[#records + 1] = { death = death, who = killer, verified = verified, group = death, location = death,
+        local damageRecord = death.combatAttackers and death or verified
+        records[#records + 1] = { death = death, who = CombatPlayer(damageRecord, killer), verified = verified, group = death, location = death,
             time = death.ts or 0, started = started }
     end
     for _, fight in ipairs(ns.db.fights) do
@@ -166,7 +190,7 @@ function Source:WorldOutcomes(db)
                 who = fight, win = true, group = fight, location = fight.location }
         elseif fight.result == "loss" and not matched[fight] then
             local killer = (fight.guid or fight.name) and fight or nil
-            records[#records + 1] = { time = fight.time, who = killer, verified = fight, group = fight, location = fight.location }
+            records[#records + 1] = { time = fight.time, who = CombatPlayer(fight, killer), verified = fight, group = fight, location = fight.location }
         end
     end
     return records
@@ -276,9 +300,34 @@ function Source:PlayerScore(name, guid)
     if normalized then return scores[normalized] or scores[byName[normalized]] end
 end
 
+function Source:AttackerCounts(db)
+    if self.attackerCounts then return self.attackerCounts end
+    local counts, contexts = {}, {}
+    local function Add(record, players)
+        local key = CombatKey(record) or record
+        local seen = contexts[key]
+        if not seen then seen = {}; contexts[key] = seen end
+        for _, player in ipairs(players or {}) do
+            local guid = player.guid
+            if ns.IsPlayerGUID(guid) and not seen[guid] then
+                seen[guid] = true
+                counts[guid] = (counts[guid] or 0) + 1
+            end
+        end
+    end
+    for _, death in ipairs(db.deaths or {}) do
+        Add(death, death.attackers)
+        Add(death, death.combatAttackers)
+    end
+    for _, incoming in ipairs(db.incoming or {}) do Add(incoming, incoming.players) end
+    self.attackerCounts = counts
+    return counts
+end
+
 function Source:MarkerCount(guid, kind)
     local db = CurrentDB()
     if not db then return 0 end
+    if kind == "attacker" then return self:AttackerCounts(db)[guid] or 0 end
     if not self.markerScores then self.markerScores = self:PlayerScores(db) end
     local score = self.markerScores[guid]
     if not score then return 0 end
@@ -294,6 +343,47 @@ function Source:BattlegroundScore(match)
         elseif fight.result == "loss" then recordedDeaths = recordedDeaths + 1 end
     end
     return kills or recordedKills, deaths or recordedDeaths
+end
+
+function Source:BattlegroundPlayerScore(match, name, guid)
+    local score = { kills = 0, deaths = 0, fights = 0, damage = 0, recapCount = 0, last = 0, profile = {} }
+    local function matches(player)
+        if not player then return false end
+        if guid and player.guid then return guid == player.guid end
+        return name and player.name and ScoreName(name) == ScoreName(player.name)
+    end
+    for _, fight in ipairs(match.fights or {}) do
+        local seen, recapDamage = false, nil
+        local function remember(player)
+            if not matches(player) then return end
+            seen = true
+            for _, field in ipairs({ "class", "level", "race", "raceName", "faction" }) do
+                score.profile[field] = score.profile[field] or player[field]
+            end
+        end
+        local who = CombatPlayer(fight, (fight.name or fight.guid) and fight or nil)
+        remember(who)
+        if matches(who) then
+            if fight.result == "win" then score.kills = score.kills + 1
+            elseif fight.result == "loss" then
+                score.deaths = score.deaths + 1
+                recapDamage = fight.damage
+            end
+        end
+        for _, player in ipairs(fight.players or fight.combatAttackers or {}) do remember(player) end
+        for _, player in ipairs(fight.helpers or {}) do
+            remember(player)
+            if fight.result == "loss" and matches(player) and type(player.damage) == "number" then
+                recapDamage = math.max(recapDamage or 0, player.damage)
+            end
+        end
+        if seen then score.fights, score.last = score.fights + 1, math.max(score.last, fight.time or 0) end
+        if type(recapDamage) == "number" then
+            score.damage, score.recapCount = score.damage + recapDamage, score.recapCount + 1
+        end
+    end
+    score.class = score.profile.class
+    return score
 end
 
 local function Nearby(a, b)
@@ -414,6 +504,11 @@ local function AddHistoryTab(open)
             entry.participants = Participants(entry.death, entry.verified, entry.who)
         end
         local ownNames = open.Deaths:OwnNames()
+        local completedCombats = {}
+        for _, record in ipairs(records) do
+            local key = CombatKey(record.death) or CombatKey(record.verified)
+            if key then completedCombats[key] = true end
+        end
         for _, incoming in ipairs(db.incoming or {}) do
             local leader, others = nil, {}
             for _, player in ipairs(incoming.players) do
@@ -421,7 +516,8 @@ local function AddHistoryTab(open)
                     if leader then others[#others + 1] = player else leader = player end
                 end
             end
-            if leader then
+            local key = CombatKey(incoming)
+            if leader and not (key and completedCombats[key]) then
                 records[#records + 1] = { time = incoming.ts, started = incoming.ts, ended = incoming.ended, who = leader, group = incoming,
                     location = incoming.location, participants = others, incoming = true }
             end
@@ -474,13 +570,14 @@ local function AddHistoryTab(open)
             if place == "" then place = Place(fallback) end
             local class = who and (who.class or RecordedClass(db, who.guid)
                 or (death and SamePlayer(who, death.killer) and (death.killer.class or death.killerClass)))
-            local interactive = not preview and not battleground
+            local interactive = not preview
+            local cardContext = battleground and { kind = "battleground", match = battleground } or nil
             local indent = (battleground and 12 or 0) + (earlierPhase and 16 or 0)
             x.add({ kind = recap and "fight" or "rivalsHistory", rec = recap, key = interactive and who and who.guid,
                 name = interactive and who and who.name, class = class, color = class,
                 markCol = 2, agoCol = 8, agoTs = entry.time, toggle = toggle,
-                groupExpanded = expanded, toggleRow = battleground == true, indent = indent > 0 and indent or nil,
-                place = place, mapPoint = interactive and coords ~= "" and point.mapID and point or nil,
+                groupExpanded = expanded, cardContext = cardContext, indent = indent > 0 and indent or nil,
+                place = place, mapPoint = interactive and not battleground and coords ~= "" and point.mapID and point or nil,
                 tone = entry.win and "green" or entry.incoming and "muted" or "red",
                 cells = { label, name, level, race, place, coords, note ~= "" and note or Damage(who), "" } })
             if expanded then
@@ -488,7 +585,7 @@ local function AddHistoryTab(open)
                     local helperLevel, helperRace = Profile(helper)
                     local helperClass = helper.class or RecordedClass(db, helper.guid)
                     x.add({ kind = "rivalsHistory", name = interactive and helper.name, key = interactive and helper.guid,
-                        class = helperClass, color = helperClass, markCol = 2, tone = "muted", participant = true,
+                        class = helperClass, color = helperClass, markCol = 2, tone = "muted", participant = true, cardContext = cardContext,
                         cells = { "", helper.name or helper.guid or "—", helperLevel, helperRace, "", "", Damage(helper), "" },
                         indent = indent + 16 })
                 end
@@ -505,8 +602,8 @@ local function AddHistoryTab(open)
             local records = {}
             for _, fight in ipairs(match.fights) do
                 local win, incoming = fight.result == "win", fight.result == "incoming"
-                local who = incoming and fight.players[1] or ((fight.name or fight.guid) and fight or nil)
-                local others = fight.helpers or {}
+                local who = incoming and fight.players[1] or CombatPlayer(fight, (fight.name or fight.guid) and fight or nil)
+                local others = fight.combatAttackers and Participants(nil, fight, who) or fight.helpers or {}
                 if incoming then
                     others = {}
                     for i = 2, #fight.players do others[#others + 1] = fight.players[i] end
@@ -531,7 +628,7 @@ local function AddHistoryTab(open)
                     if #records == 0 then
                         x.add({ cells = { "", Text("Нет подробностей боя", "No fight details") }, indent = 12 })
                     else
-                        FightRows(records, db, false, true)
+                        FightRows(records, db, false, match)
                     end
                 end
             end
@@ -752,21 +849,16 @@ local function AddHistoryTab(open)
     table.insert(x.TABS, 1, tab)
     table.insert(x.TABS, 2, { id = "rivalsNameplates", title = nameplatesTitle, cols = {},
         build = function(parent)
-            local scroll, editor = open.Theme.ScrollArea(parent, 40)
+            local widgets = Sintezza_Theme:CreateWidgets(ns.Theme)
+            local scroll, editor, bar = widgets:ScrollFrame(parent, nil, 40)
             scroll:SetPoint("TOPLEFT")
             scroll:SetPoint("BOTTOMRIGHT", -18, 0)
-            editor:SetSize(650, 510)
-            local widgets = Sintezza_Theme:CreateWidgets(ns.Theme)
-            local ui = CurrentDB().settings.ui
-            local toggle = widgets:Toggle(editor, Text("Показывать метки", "Show nameplate markers"),
-                function() return ui.showMarkers ~= false end, function(value)
-                    ui.showMarkers = value
-                    ns.Changed()
-                end)
-            toggle:SetSize(218, 30)
-            toggle:SetPoint("TOPRIGHT", -16, -12)
+            bar:SetPoint("TOPLEFT", scroll, "TOPRIGHT", 4, 0)
+            bar:SetPoint("BOTTOMLEFT", scroll, "BOTTOMRIGHT", 4, 0)
+            editor:SetSize(math.max(1, scroll:GetWidth()), 1)
+            scroll:HookScript("OnSizeChanged", function(_, width) editor:SetWidth(math.max(1, width)) end)
             ns.BuildMarkerControls(editor, -12)
-            scroll:Refresh()
+            scroll:RefreshRange()
         end })
     return tab
 end
@@ -782,12 +874,8 @@ function ns.ConnectPvP()
         hooksecurefunc(open.UI, "MarkDirty", function()
             Source.recapParticipants = nil
             Source.markerScores = nil
-            if Source.refreshQueued then return end
-            Source.refreshQueued = true
-            C_Timer.After(0, function()
-                Source.refreshQueued = nil
-                ns.RefreshPlates()
-            end)
+            Source.attackerCounts = nil
+            ns.QueueRefreshPlates()
         end)
     end
 end

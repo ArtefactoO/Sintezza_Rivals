@@ -1,456 +1,332 @@
--- Sintezza Rivals / UI/Card.lua
---
--- The player card: everything known about one player on one page. Who they
--- are, the score between you, the duel record, where you keep meeting, and
--- who else reports them. A table row holds one line; this holds the rest.
---
--- Laid out rather than printed: a header, three figures across the top, then
--- sections of label and value. The widgets are pooled, so reopening it on a
--- different player creates nothing.
-
-local ADDON, root = ...
+local _, root = ...
 local ns = root.PvP
-
 local U, X = ns.UI, ns.UIX
 local T, TC = ns.Theme, ns.Theme.C
-local rgb, ago = X.rgb, X.ago
-local raceText, coords, isWatched = X.raceText, X.coords, X.isWatched
-
+local W = Sintezza_Theme:CreateWidgets(root.Theme)
+local CARD_W, HEADER_H, ROW_H, COLUMN_GAP = 560, 54, 22, 20
 local detailFrame
 
 local function keyForName(name)
-	if not name then return nil end
-	for k, rec in pairs(Sintezza_RivalsPvPDB.sightings) do
-		if rec.name == name then return k, rec end
+	for key, record in pairs(Sintezza_RivalsPvPDB.sightings) do
+		if record.name == name then return key, record end
 	end
-	return nil
 end
 
 local function duelRecord(name)
 	local key = ns.Duels.OpponentKey(name)
 	local wins, losses, last, total, longest = 0, 0, nil, 0, 0
 	local timed, unknown, faction = 0, 0, nil
-	for _, d in ipairs(Sintezza_RivalsPvPDB.duels) do
-		if key and ns.Duels.OpponentKey(d.opponent) == key then
-			if d.won == true then wins = wins + 1
-			elseif d.won == false then losses = losses + 1
+	for _, duel in ipairs(Sintezza_RivalsPvPDB.duels) do
+		if key and ns.Duels.OpponentKey(duel.opponent) == key then
+			if duel.won == true then wins = wins + 1
+			elseif duel.won == false then losses = losses + 1
 			else unknown = unknown + 1 end
-			faction = faction or d.faction
-			if not last or (d.ts or 0) > (last.ts or 0) then last = d end
-			if d.seconds and d.seconds > 0 then
-				total = total + d.seconds
-				timed = timed + 1
-				if d.seconds > longest then longest = d.seconds end
+			faction = faction or duel.faction
+			if not last or (duel.ts or 0) > (last.ts or 0) then last = duel end
+			if duel.seconds and duel.seconds > 0 then
+				total, timed = total + duel.seconds, timed + 1
+				longest = math.max(longest, duel.seconds)
 			end
 		end
 	end
-	return wins, losses, last, (timed > 0) and math.floor(total / timed) or nil,
-		longest, unknown, faction
+	return wins, losses, last, timed > 0 and math.floor(total / timed) or nil, longest, unknown, faction
 end
 
-local function secs(n)
-	if not n or n <= 0 then return nil end
-	if n < 60 then return T.L("%ds"):format(n) end
-	return T.L("%dm %02ds"):format(math.floor(n / 60), n % 60)
+local function secs(value)
+	if not value or value <= 0 then return nil end
+	if value < 60 then return T.L("%ds"):format(value) end
+	return T.L("%dm %02ds"):format(math.floor(value / 60), value % 60)
 end
 
-local function showSighting(sighting)
-	ns.Map:ShowSpot(sighting.lastMapID, sighting.lastX, sighting.lastY, sighting.name)
+local function showSighting(record)
+	if ns.Map and record then ns.Map:ShowSpot(record.lastMapID, record.lastX, record.lastY, record.name) end
 end
 
---------------------------------------------------------------------- widgets
--- wide enough for two columns of sections, so a full card rarely needs to scroll
-local CARD_W, CARD_H = 760, 520
-local CARD_BODY_W, CARD_COLUMN_GAP = CARD_W - 24, 24
-local CARD_ROW_H, CARD_HEAD_H = 19, 26
-local CARD_TILE_GAP, CARD_TILE_W = 8, (CARD_BODY_W - 8) / 2
+local function refreshActions()
+	if root.Changed then root.Changed() end
+	if ns.HUD then ns.HUD:Update() end
+	U:MarkDirty()
+	U:Refresh()
+end
+
+local function layoutCard(f)
+	f.actions:ClearAllPoints()
+	f.actions:SetPoint("TOPLEFT", f.body, "BOTTOMLEFT", 0, -12)
+	f:SetHeight(HEADER_H + 8 + 26 + 10 + f.body:GetHeight() + 12 + 24 + 12)
+end
 
 local function buildCard()
-	local f = T.Window({
-		name = "Sintezza_RivalsPvPDetail", width = CARD_W, height = CARD_H,
-		title = "Player",
-	})
+	local f = T.Window({ name = "Sintezza_RivalsPvPDetail", width = CARD_W, height = 300,
+		title = "Player", subtitle = " ", windowAppearance = ns.WindowAppearance, defaultLayer = "DIALOG" })
 	f:SetFrameStrata("DIALOG")
-	local content = f.content
-
-	local head = CreateFrame("Frame", nil, content)
-	head:SetPoint("TOPLEFT", 12, -10)
-	head:SetPoint("TOPRIGHT", -12, -10)
-	head:SetHeight(80)
-	T.Solid(head, "BACKGROUND", TC.raised, 0.55):SetAllPoints()
-	T.Border(head, TC.line, 1)
-	f.classBar = T.Solid(head, "ARTWORK", TC.accent, 1)
-	f.classBar:SetWidth(4)
-	f.classBar:SetPoint("TOPLEFT")
-	f.classBar:SetPoint("BOTTOMLEFT")
-
-	f.classIcon = head:CreateTexture(nil, "ARTWORK")
-	f.classIcon:SetSize(20, 20)
-	f.classIcon:SetPoint("TOPLEFT", 16, -12)
-	f.classIcon:SetTexture("Interface/WorldStateFrame/ICONS-CLASSES")
-
-	local crest = CreateFrame("Frame", nil, head)
-	crest:SetSize(60, 60)
-	crest:SetPoint("RIGHT", -12, 0)
+	f.footer:Hide()
+	f.header:SetHeight(HEADER_H)
+	f.content:ClearAllPoints()
+	f.content:SetPoint("TOPLEFT", f.header, "BOTTOMLEFT", -1, 0)
+	f.content:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+	local crest = CreateFrame("Frame", nil, f.header)
+	crest:SetSize(28, 34)
+	crest:SetPoint("RIGHT", f.closeButton, "LEFT", -8, 0)
 	crest.icon = crest:CreateTexture(nil, "ARTWORK")
 	crest.icon:SetAllPoints()
-	crest:EnableMouse(true)
-	crest:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetText(T.L(self.faction))
-		GameTooltip:Show()
-	end)
-	local function hideCrestTip(self)
-		if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
-	end
-	crest:SetScript("OnLeave", hideCrestTip)
-	crest:SetScript("OnHide", hideCrestTip)
 	f.factionCrest = crest
-
-	f.nameText = T.Font(head, 18, TC.fg, true)
-	f.nameText:SetPoint("TOPLEFT", f.classIcon, "TOPRIGHT", 8, 1)
-	f.badge = CreateFrame("Frame", nil, head)
-	f.badge:SetSize(92, 22)
-	f.badge:SetPoint("TOPRIGHT", crest, "TOPLEFT", -8, -2)
-	f.badge.bg = T.Solid(f.badge, "BACKGROUND", TC.accent, 1)
-	f.badge.bg:SetAllPoints()
-	T.Border(f.badge, TC.line, 1)
-	f.badge.text = T.Font(f.badge, 11, TC.fg)
-	f.badge.text:SetPoint("CENTER")
-	f.badge:Hide()
-	f.nameText:SetPoint("RIGHT", f.badge, "LEFT", -10, 0)
-	f.nameText:SetWordWrap(false)
-	f.whatText = T.Font(head, 12, TC.muted)
-	f.whatText:SetPoint("TOPLEFT", f.classIcon, "BOTTOMLEFT", 0, -8)
-	f.whatText:SetPoint("RIGHT", crest, "LEFT", -8, 0)
-	f.whatText:SetWordWrap(false)
-	f.guildText = T.Font(head, 11, TC.accent2)
-	f.guildText:SetPoint("TOPLEFT", f.whatText, "BOTTOMLEFT", 0, -6)
-	f.guildText:SetPoint("RIGHT", crest, "LEFT", -8, 0)
-	f.guildText:SetWordWrap(false)
-
-	f.tiles = {}
-	for i = 1, 2 do
-		local tile = CreateFrame("Frame", nil, content)
-		tile:SetSize(CARD_TILE_W, 52)
-		if i == 1 then
-			tile:SetPoint("TOPLEFT", head, "BOTTOMLEFT", 0, -8)
-		else
-			tile:SetPoint("TOPLEFT", f.tiles[1], "TOPRIGHT", CARD_TILE_GAP, 0)
-		end
-		T.Solid(tile, "BACKGROUND", TC.raised, 0.55):SetAllPoints()
-		T.Border(tile, TC.line, 1)
-		tile.value = T.Font(tile, 20, TC.fg, true)
-		tile.value:SetPoint("TOP", 0, -7)
-		tile.value:SetPoint("LEFT")
-		tile.value:SetPoint("RIGHT")
-		tile.value:SetJustifyH("CENTER")
-		tile.label = T.Font(tile, 10, TC.dim)
-		tile.label:SetPoint("BOTTOM", 0, 7)
-		tile.label:SetPoint("LEFT")
-		tile.label:SetPoint("RIGHT")
-		tile.label:SetJustifyH("CENTER")
-		f.tiles[i] = tile
-	end
-	-- the rest is rows, pooled: a section heading or a label and a value. The
-	-- form has a fixed set of rows, so the card grows to fit and never scrolls.
-	local body = CreateFrame("Frame", nil, content)
-	body:SetPoint("TOPLEFT", f.tiles[1], "BOTTOMLEFT", 0, -10)
-	body:SetWidth(CARD_BODY_W)
-	f.body = body
-	f.rows = {}
-
-	-- buttons along the bottom
-	local watchBtn = T.Button(content, "Watch", 128, function()
-		local d = f.subject
-		if d and d.key and ns.Watchlist then
-		ns.Watchlist:ToggleWatch(d.key, d.name, d.class)
-		U:ShowDetail(d.name, d.key, d.duel)
-		U:MarkDirty()
-		U:Refresh()
-		end
+	f.title:SetPoint("RIGHT", crest, "LEFT", -8, 0)
+	Sintezza_Theme:TrackAppearance(f.title, "state", function(owner)
+		if f.subject then owner:SetTextColor(X.rgb(f.subject.class)) end
 	end)
-	watchBtn:SetPoint("BOTTOMLEFT", 12, 12)
-	f.watchBtn = watchBtn
+	f.subtitle:SetPoint("RIGHT", crest, "LEFT", -8, 0)
+	f.header:EnableMouse(true)
+	f.header:RegisterForDrag("LeftButton")
+	f.header:SetScript("OnDragStart", function() f:GetScript("OnDragStart")(f) end)
+	f.header:SetScript("OnDragStop", function() f:GetScript("OnDragStop")(f) end)
+	f.header:HookScript("OnEnter", function(owner)
+		W:Tooltip(owner, f.subject and f.subject.name or "", f.profileText or "", "cursor")
+	end)
+	f.header:HookScript("OnLeave", function(owner) Sintezza_Theme:HideTooltip(owner) end)
+	f.header:HookScript("OnHide", function(owner) Sintezza_Theme:HideTooltip(owner) end)
 
-	local ignoreBtn = T.Button(content, "Ignore", 128, function()
+	local score = CreateFrame("Frame", nil, f.content)
+	score:SetPoint("TOPLEFT", 12, -8)
+	score:SetPoint("TOPRIGHT", -12, -8)
+	score:SetHeight(26)
+	f.scoreLeft = W:Label(score, "", 12, TC.fg)
+	f.scoreLeft:SetPoint("LEFT", 0, 0)
+	f.scoreRight = W:Label(score, "", 12, TC.fg)
+	f.scoreRight:SetPoint("LEFT", f.scoreLeft, "RIGHT", 22, 0)
+	f.badge = W:Label(score, "", 10, TC.accent2)
+	f.badge:SetPoint("RIGHT")
+	W:SettingsDivider(score)
+	f.body = CreateFrame("Frame", nil, f.content)
+	f.body:SetPoint("TOPLEFT", score, "BOTTOMLEFT", 0, -10)
+	f.body:SetWidth(CARD_W - 24)
+	f.rows = {}
+	f.sections = {}
+	for index = 1, 2 do
+		local section = W:Section(f.body, "", nil, "settings")
+		section:SetPoint("TOPLEFT", (index - 1) * ((CARD_W - 24 - COLUMN_GAP) / 2 + COLUMN_GAP), 0)
+		section:SetSize((CARD_W - 24 - COLUMN_GAP) / 2, 28)
+		f.sections[index] = section
+	end
+	f.actions = CreateFrame("Frame", nil, f.content)
+	f.actions:SetSize(CARD_W - 24, 24)
+	local function action(label, width, previous, callback, help)
+		local button = W:Button(f.actions, T.L(label), callback)
+		button:SetSize(width, 24)
+		if previous then button:SetPoint("LEFT", previous, "RIGHT", 8, 0) else button:SetPoint("LEFT") end
+		T.Tip(button, label, help)
+		return button
+	end
+	f.watchBtn = action("Watch", 128, nil, function()
+		local d = f.subject
+		if not (d and d.key and ns.Watchlist) then return end
+		ns.Watchlist:ToggleWatch(d.key, d.name, d.class)
+		U:ShowDetail(d.name, d.key, d.duel, d.context)
+		refreshActions()
+	end, "Watch help")
+	f.ignoreBtn = action("Ignore", 142, f.watchBtn, function()
 		local d = f.subject
 		if not (d and d.key) then return end
-		local ig = Sintezza_RivalsPvPDB.ignore
-		if ig[d.key] then ig[d.key] = nil else ig[d.key] = true end
-		U:ShowDetail(d.name, d.key, d.duel)
-		U:MarkDirty()
+		ns.Watchlist:SetIgnored(d.key, not Sintezza_RivalsPvPDB.ignore[d.key])
+		U:ShowDetail(d.name, d.key, d.duel, d.context)
 		U:Refresh()
-	end)
-	ignoreBtn:SetPoint("LEFT", watchBtn, "RIGHT", 8, 0)
-	f.ignoreBtn = ignoreBtn
-
-	local copyBtn = T.Button(content, "Copy", 90, function()
-		local d = f.subject
-		if d then U:CopyText(d.name or T.L("Player"), f.plain or "") end
-	end)
-	copyBtn:SetPoint("LEFT", ignoreBtn, "RIGHT", 8, 0)
-
-	local actions = T.Button(content, "…", 34, function(owner)
-		local d = f.subject
-		local entries = {}
-		if d.duel and d.sighting then
-			entries[#entries + 1] = { value = "map", label = T.L("Last sighting on map") }
-		end
-		if d.markerAction then
-			entries[#entries + 1] = { value = "marker", label = T.L(d.markerAction) }
-		end
-		root.Theme:OpenPicker(owner, entries, nil, function(action)
-			if f.subject ~= d then return end
-			if action == "map" then
-				showSighting(d.sighting)
-			elseif action == "marker" then
-				root.SetMarkerHidden(d.key, not root.db.hiddenMarkers[d.key])
-				U:ShowDetail(d.name, d.key, d.duel)
-			end
-		end)
-	end)
-	actions:SetPoint("BOTTOMRIGHT", -12, 12)
-	T.Tip(actions, "Actions")
-	f.actions = actions
-
+	end, "Ignore help")
+	action("Copy", 100, f.ignoreBtn, function()
+		if f.subject then U:CopyText(f.subject.name, f.plain or "") end
+	end, "Copy player help")
 	return f
 end
 
---------------------------------------------------------------------- filling
-
-function U:ShowDetail(name, key, duel)
+function U:ShowDetail(name, key, duel, context)
 	if not name then return end
+	local battleground = context and context.kind == "battleground" and context.match
 	if key == nil then
-		if duel then key = ns.Duels:FindSighting(name)
-		else key = keyForName(name) end
+		if battleground then key = false
+		elseif duel then key = ns.Duels:FindSighting(name) else key = keyForName(name) end
 	end
-	local rec = key and Sintezza_RivalsPvPDB.sightings[key]
-	local sighting = ns.Map and rec and rec.lastMapID and rec.lastX and rec.lastY and rec or nil
 	local db = Sintezza_RivalsPvPDB
+	local rec = key and db.sightings[key]
+	local sighting = ns.Map and rec and rec.lastMapID and rec.lastX and rec.lastY and rec or nil
 	if not detailFrame then detailFrame = buildCard() end
 	local f = detailFrame
-
-	local bodyHeight = CARD_HEAD_H + 5 * CARD_ROW_H
-	f.body:SetHeight(bodyHeight)
-	f:SetHeight(212 + bodyHeight + 46 + 40)
-
-	-- lay the rows out from the top in two columns, reusing whatever is already built
-	local ys, col = { 0, 0 }, 1
-	local colW = duel and CARD_BODY_W or math.floor((CARD_BODY_W - CARD_COLUMN_GAP) / 2)
-	local used, plain = 0, {}
-	local function row(label, value, mapSighting)
+	local used, plain, ys = 0, {}, { 28, 28 }
+	local function row(label, value, column, help, mapSighting)
+		column = column or 1
 		used = used + 1
 		local r = f.rows[used]
 		if not r then
-			r = CreateFrame("Frame", nil, f.body)
-			r.label = T.Font(r, 12, TC.muted)
-			r.label:SetPoint("LEFT", 2, 0)
-			r.value = T.Font(r, 12, TC.fg)
-			r.value:SetPoint("RIGHT", -2, 0)
+			r = W:SettingRow(f.body, "", ROW_H)
+			root.Theme:Font(r.label, 12, "", TC.muted)
+			r.value = W:Label(r, "", 12, TC.fg)
+			r.value:SetPoint("RIGHT", -1, 0)
 			r.value:SetJustifyH("RIGHT")
-			r.rule = T.Solid(r, "ARTWORK", TC.line, 1)
-			r.rule:SetHeight(1)
-			r.rule:SetPoint("BOTTOMLEFT")
-			r.rule:SetPoint("BOTTOMRIGHT")
+			r.value:SetWordWrap(false)
+			r.label:SetWordWrap(false)
+			r:EnableMouse(true)
+			r:SetScript("OnEnter", function(owner)
+				W:Tooltip(owner, owner.caption, owner.fullText .. (owner.helpText and "\n\n" .. owner.helpText or ""), "cursor")
+			end)
+			r:SetScript("OnLeave", function(owner) Sintezza_Theme:HideTooltip(owner) end)
+			r:SetScript("OnHide", function(owner) Sintezza_Theme:HideTooltip(owner) end)
 			f.rows[used] = r
 		end
-		local height = label == nil and CARD_HEAD_H or CARD_ROW_H
+		local width = (CARD_W - 24 - COLUMN_GAP) / 2
 		r:ClearAllPoints()
-		r:SetPoint("TOPLEFT", f.body, "TOPLEFT", (col - 1) * (colW + CARD_COLUMN_GAP), -ys[col])
-		r:SetSize(colW, height)
-		ys[col] = ys[col] + height
-		if label == nil then
-			r.label:SetTextColor(TC.accent2[1], TC.accent2[2], TC.accent2[3])
-			local heading = string.upper(T.L(value))
-			r.label:SetText(heading)
-			r.value:SetText("")
-			r.rule:Show()
-			plain[#plain + 1] = ""
-			plain[#plain + 1] = heading
-		else
-			if value == nil or value == "" then value = "-" end
-			local c = TC.muted
-			r.label:SetTextColor(c[1], c[2], c[3])
-			local caption = T.L(label)
-			r.label:SetText(caption)
-			r.value:SetText(value)
-			r.value:SetTextColor(unpack(mapSighting and TC.accent2 or TC.fg))
-			r.rule:Hide()
-			plain[#plain + 1] = string.format("%s: %s", caption,
-				tostring(value):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
-		end
+		r:SetPoint("TOPLEFT", f.body, "TOPLEFT", (column - 1) * (width + COLUMN_GAP), -ys[column])
+		r:SetSize(width, ROW_H)
+		r.value:SetWidth(label == "Fight patterns" and width - 91 or width - 112)
+		r.value:SetWordWrap(true)
+		r.value:SetJustifyH(label == "Fight patterns" and "LEFT" or "RIGHT")
+		r.label:ClearAllPoints()
+		r.label:SetPoint("LEFT")
+		r.label:SetPoint("RIGHT", r.value, "LEFT", -8, 0)
+		r.caption = T.L(label)
+		r.label:SetText(r.caption)
+		r.fullText = value ~= nil and value ~= "" and tostring(value) or "-"
+		r.helpText = help and T.L(help) or nil
+		r.value:SetText(r.fullText)
+		local height = math.max(ROW_H, r.value:GetStringHeight() + 6)
+		r:SetHeight(height)
+		ys[column] = ys[column] + height
+		r.value:SetTextColor(unpack(mapSighting and TC.accent2 or TC.fg))
+		plain[#plain + 1] = r.caption .. ": " .. r.fullText:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
 		if mapSighting and not r.mapLink then
-			local link = CreateFrame("Button", nil, r)
-			link:SetPoint("RIGHT", r.value, "RIGHT", 2, 0)
-			link:SetHeight(CARD_ROW_H)
-			link:SetScript("OnClick", function(self) showSighting(self.sighting) end)
-			T.Tip(link, "Show on map")
-			local underline = T.Solid(link, "ARTWORK", TC.accent2, 0.65)
-			underline:SetHeight(1)
-			underline:SetPoint("BOTTOMLEFT", 2, 2)
-			underline:SetPoint("BOTTOMRIGHT", -2, 2)
-			r.mapLink = link
+			r.mapLink = W:Button(r, "", function() showSighting(r.mapSighting) end)
+			r.mapLink:SetPoint("RIGHT", r.value, "RIGHT", 0, 0)
+			r.mapLink:SetHeight(ROW_H)
+			r.mapLink.text:SetJustifyH("RIGHT")
+			T.Tip(r.mapLink, "Show on map", "Sighting position help")
 		end
+		r.mapSighting = mapSighting
 		if r.mapLink then
-			r.mapLink.sighting = mapSighting
 			r.mapLink:SetShown(mapSighting ~= nil)
-			if mapSighting then r.mapLink:SetWidth(math.min(r.value:GetStringWidth() + 4, colW)) end
+			r.mapLink.text:SetText(mapSighting and r.fullText or "")
+			r.mapLink:SetWidth(math.min(r.value:GetWidth(), r.value:GetStringWidth() + 16))
 		end
+		r.value:SetShown(not mapSighting)
 		r:Show()
 	end
-	local function section(title, column)
-		col = column
-		row(nil, title)
-	end
 
-	--------------------------------------------------- who
-	local score = not duel and root.PvPSource and root.PvPSource:PlayerScore(name, key)
-	local cls = (rec and rec.class) or (score and score.class)
+	local score = not duel and root.PvPSource and (battleground
+		and root.PvPSource:BattlegroundPlayerScore(battleground, name, key)
+		or root.PvPSource:PlayerScore(name, key))
+	local cls = rec and rec.class or score and score.class
 	local wins, losses, lastDuel, avg, longest, unknownDuels, duelFaction
 	if duel then
 		wins, losses, lastDuel, avg, longest, unknownDuels, duelFaction = duelRecord(name)
-		cls = cls or (lastDuel and lastDuel.class)
+		cls = cls or lastDuel and lastDuel.class
 	end
-	local profile = (rec and (rec.race or rec.raceName)) and rec or lastDuel or rec
-	local faction = (rec and rec.faction) or duelFaction
-	local r, g, b = rgb(cls)
-	f.classBar:SetColorTexture(r, g, b, 1)
-	f.nameText:SetText(name)
-	f.nameText:SetTextColor(r, g, b)
-
-	-- the class icon out of the sheet, or nothing if the class is unknown
-	local tc = cls and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[cls]
-	if tc then
-		f.classIcon:SetTexCoord(tc[1], tc[2], tc[3], tc[4])
-		f.classIcon:Show()
-	else
-		f.classIcon:Hide()
-	end
-
-	-- "Level 60   Orc": the class is already said by the icon and the colour
+	local profile = battleground and score and score.profile or rec and (rec.race or rec.raceName) and rec or lastDuel or rec
+	cls = cls or profile and profile.class
+	local faction = profile and profile.faction or rec and rec.faction or duelFaction
+	f.title:SetText(name)
+	f.title:SetTextColor(X.rgb(cls))
 	local what = {}
-	local level = (rec and rec.level) or (lastDuel and lastDuel.level)
+	local level = profile and profile.level or rec and rec.level or lastDuel and lastDuel.level
 	if level and level > 0 then what[#what + 1] = T.L("Level %d"):format(level) end
-	if profile then what[#what + 1] = raceText(profile) end
-	f.whatText:SetText(table.concat(what, "   "))
-	local guild = rec and rec.guild
-	f.guildText:SetText(guild and ("<" .. guild .. ">") or "")
-
-	local crest = f.factionCrest
-	local theme = Sintezza_Theme
-	local texture = theme.GetFactionCrest and theme:GetFactionCrest(faction)
-	crest.faction = texture and faction or nil
-	crest.icon:SetTexture(texture)
-	crest:SetShown(texture ~= nil)
+	if profile and (profile.race or profile.raceName) then what[#what + 1] = X.raceText(profile) end
+	if cls then what[#what + 1] = root.ClassName(cls) end
+	if rec and rec.guild then what[#what + 1] = "<" .. rec.guild .. ">" end
+	f.profileText = table.concat(what, " · ")
+	f.subtitle:SetText(f.profileText)
+	local crest = Sintezza_Theme:GetFactionCrest(faction)
+	f.factionCrest.icon:SetTexture(crest)
+	f.factionCrest:SetShown(crest ~= nil)
+	plain[#plain + 1] = name
+	plain[#plain + 1] = f.profileText
 
 	if duel then
-		f.tiles[1]:SetWidth(CARD_BODY_W)
-		f.tiles[2]:Hide()
-		f.tiles[1].value:SetText(string.format("|cff40ff40%d|r / |cffff4040%d|r", wins, losses))
-		f.tiles[1].label:SetText(T.L("duels won / lost"))
-		section("Duels", 1)
+		f.sections[1].title:SetText(T.L("Duels"))
+		f.sections[2].title:SetText(T.L("Statistics"))
+		f.scoreLeft:SetText(T.L("Card duel wins"):format(wins))
+		f.scoreRight:SetText(T.L("Card duel losses"):format(losses))
 		local decided = wins + losses
-		row("win rate", decided > 0 and T.L("%.0f%% of %d"):format((wins / decided) * 100, decided) or nil)
-		row("Unknown results", unknownDuels)
-		row("last duel", lastDuel and string.format("%s, %s", lastDuel.ts and ago(lastDuel.ts) or "—",
-			T.L(lastDuel.won == true and "you won" or lastDuel.won == false and "you lost" or "result not read")) or nil)
+		row("last duel", lastDuel and string.format("%s, %s", lastDuel.ts and X.ago(lastDuel.ts) or "-",
+			T.L(lastDuel.won == true and "you won" or lastDuel.won == false and "you lost" or "result not read")))
 		row("fought in", lastDuel and lastDuel.zone)
-		row("length", avg and T.L("%s average, %s longest"):format(secs(avg) or "-", secs(longest) or "-"))
+		row("win rate", decided > 0 and T.L("%.0f%% of %d"):format(wins / decided * 100, decided) or nil)
+		row("Average duration", secs(avg), 2)
+		row("Longest duel", secs(longest), 2)
+		row("Unknown results", unknownDuels, 2, "Unknown duel results help")
+		if sighting then row("Last sighting on map", X.coords(rec.lastX, rec.lastY), 2, "Sighting position help", sighting) end
+	elseif battleground then
+		f.sections[1].title:SetText(T.L("Match"))
+		f.sections[2].title:SetText(T.L("Between you"))
+		f.scoreLeft:SetText(T.L("Card deaths"):format(score.deaths))
+		f.scoreRight:SetText(T.L("Card kills"):format(score.kills))
+		row("Battleground", battleground.name)
+		row("Match state", T.L(battleground.completed and "Match complete" or battleground.closed and "Left match" or "Current match"))
+		row("last fought", score.last > 0 and X.ago(score.last) or nil)
+		row("Recorded fights", score.fights, 2, "Battleground card help")
+		row("hit you in", score.recapCount > 0 and T.L("%d of your deaths, %d damage"):format(score.recapCount, score.damage) or nil,
+			2, "Battleground recap help")
+		row("Match started", battleground.time and X.ago(battleground.time), 2)
 	else
-		f.tiles[1]:SetWidth(CARD_TILE_W)
-		f.tiles[2]:Show()
-		local deaths = score and score.deaths or 0
-		local kills = score and score.kills or 0
-		f.tiles[1].label:SetText(T.L("times they killed you"))
-		f.tiles[2].value:SetText("|cff60ff60" .. kills .. "|r")
-		f.tiles[2].label:SetText(T.L("times you killed them"))
-
-		--------------------------------------------------- where
-		section("Where", 1)
-		row("last seen", rec and string.format("%s, %s", ago(rec.lastSeen), tostring(rec.lastZone or "?")) or nil)
-		local sub = rec and rec.lastSubZone ~= "" and rec.lastSubZone ~= rec.lastZone and rec.lastSubZone
-		row("exactly", rec and rec.lastX and ((sub and (sub .. "  ") or "") .. coords(rec.lastX, rec.lastY)) or nil, sighting)
-		row("times seen", rec and T.L("%d, first %s"):format(rec.count or 1, ago(rec.firstSeen)) or nil)
-		local peak, peakN = nil, 0
-		for h, n in pairs(rec and rec.hours or {}) do
-			if n > peakN then peak, peakN = h, n end
-		end
-		row("usually around", (peak and peakN > 1) and string.format("%02d:00", peak) or nil)
-		row("Source", rec and T.L(rec.lastSource) or nil)
-
-		--------------------------------------------------- between you
-		-- the death recap also says who hit you hardest, which need not be
-		-- whoever landed the last blow
+		f.sections[1].title:SetText(T.L("Where"))
+		f.sections[2].title:SetText(T.L("Between you"))
+		f.scoreLeft:SetText(T.L("Card deaths"):format(score and score.deaths or 0))
+		f.scoreRight:SetText(T.L("Card kills"):format(score and score.kills or 0))
 		local zoneHits, inRecap, topDamage, damage = {}, 0, 0, 0
-		for _, d in ipairs(db.deaths) do
-			local killer = root.PvPSource and root.PvPSource:RecapKiller(d) or d.killer
-			if killer and ((key and killer.guid == key) or (not killer.guid and killer.name == name)) then
-				if d.zone then zoneHits[d.zone] = (zoneHits[d.zone] or 0) + 1 end
+		for _, death in ipairs(db.deaths) do
+			local killer = root.PvPSource and root.PvPSource:RecapKiller(death) or death.killer
+			if killer and ((key and killer.guid == key) or (not killer.guid and killer.name == name)) and death.zone then
+				zoneHits[death.zone] = (zoneHits[death.zone] or 0) + 1
 			end
 			local dealt
-			for i, a in ipairs(d.attackers or {}) do
-				local namedKiller = key and killer and killer.guid == key and a.name == killer.name
-				if (key and a.guid == key) or (not a.guid and (a.name == name or namedKiller)) then
-					dealt = (dealt or 0) + (a.damage or 0)
-					if i == 1 then topDamage = topDamage + 1 end
+			for index, attacker in ipairs(death.attackers or {}) do
+				local namedKiller = key and killer and killer.guid == key and attacker.name == killer.name
+				if (key and attacker.guid == key) or (not attacker.guid and (attacker.name == name or namedKiller)) then
+					dealt = (dealt or 0) + (attacker.damage or 0)
+					if index == 1 then topDamage = topDamage + 1 end
 				end
 			end
 			if dealt then inRecap, damage = inRecap + 1, damage + dealt end
 		end
-		f.tiles[1].value:SetText("|cffff6060" .. deaths .. "|r")
-		local topZone, topN = nil, 0
-		for z, n in pairs(zoneHits) do
-			if n > topN then topZone, topN = z, n end
-		end
 		local nem = key and db.nemesis[key]
-		section("Between you", 2)
-		local lastFight = score and score.last > 0 and score.last
+		local lastFight = score and score.last and score.last > 0 and score.last
+		local sub = rec and rec.lastSubZone ~= "" and rec.lastSubZone ~= rec.lastZone and rec.lastSubZone
+		row("last seen", rec and string.format("%s, %s", X.ago(rec.lastSeen), tostring(rec.lastZone or "?")))
+		row("exactly", rec and rec.lastX and ((sub and sub .. "  " or "") .. X.coords(rec.lastX, rec.lastY)), nil, "Sighting position help", sighting)
 		row("last fought", lastFight and (nem and nem.lastEncounter == lastFight and nem.lastZone
-			and string.format("%s, %s", ago(lastFight), nem.lastZone) or ago(lastFight)) or nil)
-		row("kills you most in", topZone and string.format("%s (%d)", topZone, topN) or nil)
-		row("hit you in", inRecap > 0 and T.L("%d of your deaths, %d damage"):format(inRecap, damage) or nil)
-		row("most damage", inRecap > 0 and T.L("in %d of them"):format(topDamage) or nil)
+			and string.format("%s, %s", X.ago(lastFight), nem.lastZone) or X.ago(lastFight)), 2)
+		row("times seen", rec and T.L("%d, first %s"):format(rec.count or 1, X.ago(rec.firstSeen)), 1, "Encounter count help")
+		local peak, peakN = nil, 0
+		for hour, count in pairs(rec and rec.hours or {}) do
+			if count > peakN or (count == peakN and (not peak or hour < peak)) then peak, peakN = hour, count end
+		end
+		row("Most sightings at", peak and peakN > 1 and string.format("%02d:00–%02d:59", peak, peak) or nil, 1, "Sighting hours help")
+		row("Source", rec and T.L(rec.lastSource), 1, "Sighting source help")
+		local topZone, topN = nil, 0
+		for zone, count in pairs(zoneHits) do if count > topN then topZone, topN = zone, count end end
+		row("kills you most in", topZone and string.format("%s (%d)", topZone, topN), 2)
+		row("hit you in", inRecap > 0 and T.L("%d of your deaths, %d damage"):format(inRecap, damage) or nil, 2, "Recap damage help")
+		row("most damage", inRecap > 0 and T.L("in %d of them"):format(topDamage) or nil, 2, "Most damage help")
 		local known = ns.Deaths and ns.Deaths.KnownFor and ns.Deaths:KnownFor(name)
+		local explanations = {}
 		if known then
-			for i, description in ipairs(known) do known[i] = T.L(description) end
+			for index, pattern in ipairs(known) do
+				known[index] = ns.Deaths:PatternLabel(name, pattern)
+				explanations[#explanations + 1] = known[index] .. ": " .. ns.Deaths:PatternHelp(pattern)
+			end
 		end
-		row("known for", known and table.concat(known, ", ") or nil)
-	end
-
-	-- watched or ignored is a badge in the header, beside the faction
-	local watched, ignored = key and isWatched(key), key and db.ignore[key]
-	if watched or ignored then
-		if watched then
-		f.badge.bg:SetColorTexture(0.85, 0.66, 0.1, 0.95)
-		f.badge.text:SetText(T.L("WATCHED"))
-		f.badge.text:SetTextColor(0.1, 0.08, 0.02)
-		else
-		f.badge.bg:SetColorTexture(0.35, 0.36, 0.4, 0.95)
-		f.badge.text:SetText(T.L("IGNORED"))
-		f.badge.text:SetTextColor(1, 1, 1)
+		row("Fight patterns", known and table.concat(known, ", "), 2, "Fight patterns help")
+		if #explanations > 0 then
+			f.rows[used].helpText = T.L("Fight patterns help") .. "\n\n" .. table.concat(explanations, "\n\n")
 		end
-		f.badge:Show()
-	else
-		f.badge:Hide()
 	end
-
-	for i = used + 1, #f.rows do f.rows[i]:Hide() end
-	local canMark = root.IsPlayerGUID(key)
-	local hidden = canMark and root.db.hiddenMarkers[key]
-	local kind = canMark and root.PvPSource and root.PvPSource:Kind(key, root.db.players[key])
-	local markerAction
-	if hidden then markerAction = "Restore nameplate marker"
-	elseif kind and root.MarkStyle(kind) ~= "off" then markerAction = "Hide nameplate marker" end
-	f.subject = { name = name, key = key, class = cls, duel = duel, sighting = sighting, markerAction = markerAction }
+	for index = used + 1, #f.rows do f.rows[index]:Hide() end
+	for _, section in ipairs(f.sections) do section:LayoutTitleRule() end
+	f.body:SetHeight(math.max(ys[1], ys[2]))
+	local watched, ignored = key and X.isWatched(key), key and db.ignore[key]
+	f.badge:SetText(ignored and T.L("IGNORED") or watched and T.L("WATCHED") or "")
+	f.subject = { name = name, key = key, class = cls, duel = duel, sighting = sighting, context = context }
+	local scoreText = (f.scoreLeft:GetText() .. "  " .. f.scoreRight:GetText()):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+	table.insert(plain, 3, scoreText)
 	f.plain = table.concat(plain, "\n")
-	f.title:SetText(name)
-	f.subtitle:SetText("")
-	f.watchBtn.label:SetText(key and isWatched(key) and T.L("Unwatch") or T.L("Watch"))
-	f.ignoreBtn.label:SetText(key and db.ignore[key] and T.L("Stop ignoring") or T.L("Ignore"))
+	f.watchBtn.text:SetText(T.L(watched and "Unwatch" or "Watch"))
+	f.ignoreBtn.text:SetText(T.L(ignored and "Stop ignoring" or "Ignore"))
 	f.watchBtn:SetEnabled(key and true or false)
 	f.ignoreBtn:SetEnabled(key and true or false)
-	f.actions:SetShown(markerAction ~= nil or (duel and sighting ~= nil) or false)
+	layoutCard(f)
 	f:Show()
 	f:Raise()
 end

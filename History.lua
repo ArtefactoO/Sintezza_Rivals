@@ -34,7 +34,7 @@ ns.MarkerAnchors = {
     { "top", Text("Сверху", "Above") }, { "bottom", Text("Снизу", "Below") },
 }
 
-local scalingKinds = { killer = true, defeated = true }
+local scalingKinds = { killer = true, attacker = true, defeated = true }
 local markerIcons = { skull = true, swords = true, diamond = true }
 local defaultScaling = { enabled = false, count = 4, tiers = {
     { kills = 5, bonus = 10 }, { kills = 10, bonus = 15 },
@@ -54,14 +54,15 @@ local function NormalizeMarkerScaling(saved)
     local scaling = { enabled = saved and saved.enabled == true or false,
         count = saved and saved.count == 3 and 3 or 4, tiers = {} }
     local tiers = saved and type(saved.tiers) == "table" and saved.tiers
-    local previous = 0
+    local previous, previousBonus = 0, 0
     for index, default in ipairs(defaultScaling.tiers) do
         local row = tiers and tiers[index]
         local kills = type(row) == "table" and tonumber(row.kills) or default.kills
         local bonus = type(row) == "table" and tonumber(row.bonus) or default.bonus
         kills = math.min(maxThreshold - (#defaultScaling.tiers - index), math.max(previous + 1, math.floor(kills)))
-        scaling.tiers[index] = { kills = kills, bonus = math.max(0, math.min(200, math.floor(bonus))) }
-        previous = kills
+        bonus = math.max(previousBonus, math.max(0, math.min(200, math.floor(bonus))))
+        scaling.tiers[index] = { kills = kills, bonus = bonus }
+        previous, previousBonus = kills, bonus
     end
     return scaling
 end
@@ -91,17 +92,20 @@ function ns.SetMarkerThreshold(kind, index, field, value)
     local row = scaling.tiers[index]
     if not row or index > scaling.count then return false end
     if field == "kills" then
-        local before, after = scaling.tiers[index - 1], scaling.tiers[index + 1]
-        if value <= (before and before.kills or 0) or value > maxThreshold - (#scaling.tiers - index)
-            or (index < scaling.count and after and value >= after.kills) then return false end
+        if value < 1 or value > maxThreshold then return false end
+        value = math.max(index, math.min(maxThreshold - (#scaling.tiers - index), value))
     elseif field ~= "bonus" or value < 0 or value > 200 then
         return false
     end
     if row[field] ~= value then
         local tiers = EditableMarkerScaling(kind).tiers
         tiers[index][field] = value
-        if field == "kills" and index == 3 and scaling.count == 3 then
-            tiers[4].kills = math.max(tiers[4].kills, value + 1)
+        local distance = field == "kills" and 1 or 0
+        for other = index - 1, 1, -1 do
+            tiers[other][field] = math.min(tiers[other][field], tiers[other + 1][field] - distance)
+        end
+        for other = index + 1, #tiers do
+            tiers[other][field] = math.max(tiers[other][field], tiers[other - 1][field] + distance)
         end
         ns.Changed()
     end
@@ -270,6 +274,10 @@ function ns.AddBattlegroundFight(battleground, fight)
 end
 
 function ns.ClearBattlegroundHistory()
+    local deaths = ns.PvP and ns.PvP.Deaths
+    if ns.IsBattleground() and deaths and deaths.ResetIncomingDamage then
+        deaths.ResetIncomingDamage()
+    end
     match = nil
     ns.db.battlegrounds = {}
     MatchHistoryChanged()
@@ -383,6 +391,7 @@ local function CaptureDeath()
     local location = deaths and deaths.PlayerLocation()
     local fight = { result = "loss", time = deathTime, helpers = {}, location = location }
     if battleground then ns.AddBattlegroundFight(battleground, fight) end
+    if deaths and deaths.AttachCombatDeath then deaths:AttachCombatDeath(fight) end
     if not C_DeathRecap or not C_DeathRecap.GetRecapEvents then return end
     local function Try()
         if serial ~= deathSerial then return end
@@ -432,19 +441,12 @@ function ns.SortedRecords()
     return sorted
 end
 
-function ns.SetMarkerHidden(guid, hidden)
-    if not ns.IsPlayerGUID(guid) then return end
-    ns.db.hiddenMarkers[guid] = hidden and true or nil
-    ns.Changed()
-end
-
 function ns.MarkTarget()
     if ns.IsBattleground() then return end
     local guid = ns.EnemyGUID("target")
     if not guid then ns.Message(Text("Выбери вражеского игрока, которого игра позволяет распознать.", "Select an enemy player the game can identify.")); return end
     local record = Record(guid, NameOf("target"), GetServerTime())
     record.manual = true
-    ns.SetMarkerHidden(guid, false)
     ns.Message(Text("%s отмечен вручную.", "%s marked manually."):format(record.name or guid))
 end
 
@@ -514,7 +516,6 @@ events:SetScript("OnEvent", function(self, event, name, target)
     end
     ns.db.fights = ns.db.fights or {}
     ns.db.battlegrounds = type(ns.db.battlegrounds) == "table" and ns.db.battlegrounds or {}
-    ns.db.hiddenMarkers = type(ns.db.hiddenMarkers) == "table" and ns.db.hiddenMarkers or {}
     if type(ns.db.marks) ~= "table" then
         ns.db.marks = {}
         ns.db.legacyPlayers = {}
@@ -554,14 +555,6 @@ SlashCmdList.SINTEZZA_RIVALS = function(message)
     elseif command == "test" then
         if not (ns.PvPSource and ns.PvPSource:OpenHistory(argument ~= "stop")) then
             ns.Message(Text("Не удалось открыть историю PvP.", "Could not open PvP history."))
-        end
-    elseif command == "remove" then
-        local guid = ns.EnemyGUID("target")
-        if guid then
-            ns.SetMarkerHidden(guid, true)
-            ns.Message(Text("Метка цели снята.", "Target marker removed."))
-        else
-            ns.Message(Text("Выбери вражеского игрока.", "Select an enemy player."))
         end
     elseif command == "config" or command == "options" or command == "settings" then
         if ns.PvP and ns.PvP.Options then ns.PvP.Options:Open() end

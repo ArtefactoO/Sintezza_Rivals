@@ -4,7 +4,7 @@ local ticker
 
 local function SetIcon(texture, style, kind, layout)
     if style == "swords" then
-        texture:SetTexture(Sintezza_Theme.icons.Sintezza_Rivals)
+        texture:SetTexture("Interface\\AddOns\\Sintezza_Rivals\\Media\\NameplateSwords.tga")
         texture:SetTexCoord(0, 1, 0, 1)
         texture:SetVertexColor(1, 1, 1, 1)
     else
@@ -362,7 +362,7 @@ local function RefreshUnit(unit)
     local guid = ns.EnemyGUID(unit)
     local record = guid and ns.db.players[guid]
     local kind
-    if guid and not ns.db.hiddenMarkers[guid] then
+    if guid then
         if ns.PvPSource then kind = ns.PvPSource:Kind(guid, record)
         elseif record then kind = ns.Kind(record) end
     end
@@ -390,7 +390,8 @@ local function RefreshUnit(unit)
     local count
     if ns.MarkerScalingAvailable(kind, style) and ns.MarkerScaling(kind).enabled then
         if ns.PvPSource then count = ns.PvPSource:MarkerCount(guid, kind)
-        elseif record then count = kind == "killer" and (record.kills or 0) or record.defeats end
+        elseif record then count = kind == "killer" and (record.kills or 0)
+            or kind == "attacker" and (record.recaps or 0) or record.defeats end
     end
     PaintMarker(state, health, text, style, kind, count)
 end
@@ -417,6 +418,16 @@ function ns.RefreshPlates()
     end
 end
 
+local refreshQueued
+function ns.QueueRefreshPlates()
+    if refreshQueued then return end
+    refreshQueued = true
+    C_Timer.After(0, function()
+        refreshQueued = nil
+        ns.RefreshPlates()
+    end)
+end
+
 function ns.StartNameplates()
     local driver = CreateFrame("Frame")
     driver:RegisterEvent("NAME_PLATE_UNIT_ADDED")
@@ -441,6 +452,6 @@ function ns.StartNameplates()
                 if type(token) == "string" then visible[token] = true end
             end
         elseif event == "UNIT_FACTION" and (type(ns.Public(unit)) ~= "string" or not visible[unit]) then return end
-        ns.RefreshPlates()
+        ns.QueueRefreshPlates()
     end)
 end

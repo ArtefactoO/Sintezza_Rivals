@@ -164,15 +164,34 @@ local function pickKiller(cands)
 	return nil, nil
 end
 
--- This is a PvP addon: a death to a mob is noise. The durability message is the
--- discriminator (a PvP death costs no durability), and it can land a moment
--- after PLAYER_DEAD, so a death is recorded first and dropped again if the
--- message turns up. Nothing PvE-flagged is ever kept.
+-- A PvE finishing blow removes the death outcome. Readable player damage from
+-- the same combat is retained as an incoming-damage entry.
+local function KeepCombatDamage(rec)
+	if not (rec.combatAttackers and rec.meterSession and rec.meterStartedAt) then return end
+	local entries = Sintezza_RivalsPvPDB.incoming
+	for _, entry in ipairs(entries) do
+		if entry.meterSession == rec.meterSession and entry.meterStartedAt == rec.meterStartedAt then return end
+	end
+	local entry = {
+		ts = rec.meterStartedAt, ended = rec.ts, players = rec.combatAttackers,
+		meterSession = rec.meterSession, meterStartedAt = rec.meterStartedAt,
+		location = { mapID = rec.mapID, zone = rec.zone, subZone = rec.subZone,
+			x = rec.x, y = rec.y, worldX = rec.worldX, worldY = rec.worldY },
+	}
+	ns.Duels:StripRecentDuelDamage(entry)
+	if #entry.players == 0 then return end
+	entries[#entries + 1] = entry
+	while #entries > 100 do table.remove(entries, 1) end
+end
+
 local function dropDeath(rec)
 	local t = Sintezza_RivalsPvPDB.deaths
+	local removed
 	for i = #t, 1, -1 do
-		if t[i] == rec then table.remove(t, i) end
+		if t[i] == rec then table.remove(t, i); removed = true end
 	end
+	if not removed then return end
+	KeepCombatDamage(rec)
 	local z = rec.mapID and Sintezza_RivalsPvPDB.zones[rec.mapID]
 	if z and (z.deaths or 0) > 0 then z.deaths = z.deaths - 1 end
 	if rec.counted and rec.killer then
@@ -390,27 +409,63 @@ local function TrackIncomingDamage()
 		if root.IsBattleground() then return root.BattlegroundMatch() end
 		if ns:IsRecording("fights") and try(IsInInstance) == false then return "world" end
 	end
+	function D:AttachCombatDeath(record)
+		local segment = combat or pending
+		if not segment or not segment.hit or segment.destination ~= destination() then return end
+		local stamp = record.ts or record.time
+		if segment.ended and stamp and stamp > segment.ended then return end
+		segment.died = true
+		segment.deathRecords = segment.deathRecords or {}
+		for _, known in ipairs(segment.deathRecords) do
+			if known == record or (known.ts ~= nil) == (record.ts ~= nil) then return end
+		end
+		segment.deathRecords[#segment.deathRecords + 1] = record
+	end
+
 	local function save(segment)
-		if not (segment.hit and not segment.died and segment.id and segment.id ~= lastSession) then return end
+		if not (segment.hit and segment.id and segment.id ~= lastSession) then return end
 		if destination() ~= segment.destination then return end
 		local players = IncomingPlayers(segment.id, meterType)
 		if not players then return end
 		lastSession = segment.id
 		if #players == 0 then return end
+		local guids = {}
+		local function Remember(person)
+			if not person or not person.name or not root.IsPlayerGUID(person.guid) then return end
+			local known = guids[person.name]
+			guids[person.name] = (known == nil or known == person.guid) and person.guid or false
+		end
+		for _, contact in ipairs(D.contacts) do
+			if contact.ts >= segment.hit - 5 then Remember(contact) end
+		end
+		for _, record in pairs(Sintezza_RivalsPvPDB.sightings) do
+			if (record.lastSeen or 0) >= segment.hit - 5 then Remember(record) end
+		end
+		for _, record in ipairs(segment.deathRecords or {}) do
+			Remember(record.killer or record)
+			for _, attacker in ipairs(record.attackers or record.helpers or {}) do Remember(attacker) end
+		end
+		for _, player in ipairs(players) do player.guid = guids[player.name] or nil end
+
+		local attached
+		for _, record in ipairs(segment.deathRecords or {}) do
+			record.combatAttackers = players
+			record.meterSession, record.meterStartedAt = segment.id, segment.hit
+			local records = segment.destination == "world" and Sintezza_RivalsPvPDB.deaths
+				or segment.destination.fights
+			for _, saved in ipairs(records) do if saved == record then attached = true; break end end
+		end
+		if attached then
+			if ns.UI then ns.UI:MarkDirty() end
+			return
+		end
 		if segment.destination ~= "world" then
 			root.AddBattlegroundFight(segment.destination,
 				{ result = "incoming", time = segment.hit, ended = segment.ended, location = segment.location, players = players })
 			return
 		end
-		local guids = {}
-		for _, contact in ipairs(D.contacts) do
-			if contact.ts >= segment.hit - 5 and contact.name and root.IsPlayerGUID(contact.guid) then
-				local known = guids[contact.name]
-				guids[contact.name] = (known == nil or known == contact.guid) and contact.guid or false
-			end
-		end
-		for _, player in ipairs(players) do player.guid = guids[player.name] or nil end
 		local entry = { ts = segment.hit, ended = segment.ended, location = segment.location, players = players }
+		if segment.died then entry.meterSession, entry.meterStartedAt = segment.id, segment.hit end
 		ns.Duels:StripRecentDuelDamage(entry)
 		if #players == 0 then return end
 		local entries = Sintezza_RivalsPvPDB.incoming
@@ -586,8 +641,9 @@ end
 -- this death wins. After the last try the death is finished without it.
 local RECAP_TRIES = { 0.3, 1, 2 }
 local worldRecapGeneration = 0
+local latestDeathRecord
 local function tryRecap(rec, crowd, i, generation)
-	if generation ~= worldRecapGeneration then return end
+	if generation ~= worldRecapGeneration or rec ~= latestDeathRecord then return end
 	local recap = readRecap(rec.ts)
 	if not recap and i < #RECAP_TRIES then
 		C_Timer.After(RECAP_TRIES[i + 1] - RECAP_TRIES[i], function() ns:Guard(tryRecap, rec, crowd, i + 1, generation) end)
@@ -631,7 +687,30 @@ function D:KnownFor(name)
 	return #out > 0 and out or nil
 end
 
+local PATTERN_LABELS = {
+	["Lone wolf"] = { "One-person problem", "Solo trouble", "No backup needed", "Party of one", "Uninvited duel", "Lone wolf" },
+	["Pack hunter"] = { "Brought friends", "Solo, with backup", "Full party service", "Group project", "Strength in numbers", "Pack hunter" },
+	["Lowbie farmer"] = { "Sandbox champion", "Picks on the little guy", "Grey-name collector", "Training dummy enthusiast", "Low-level specialist", "Lowbie farmer" },
+	["Camper"] = { "Frequent visitor", "Reserved this spot", "Same time, same place", "Not done yet", "Knows the way back", "Camper" },
+	["Giant slayer"] = { "Size does not matter", "Punches above their level", "Level is just a number", "Took the uphill fight", "Found the weak spot", "Giant slayer" },
+}
+
+function D:PatternLabel(name, pattern)
+	local labels = PATTERN_LABELS[pattern]
+	if not labels then return ns.L(pattern) end
+	-- A stable cosmetic choice; reopening a card must not reroll its description.
+	local hash = 0
+	local seed = tostring(name or "") .. ":" .. pattern
+	for index = 1, #seed do hash = (hash * 33 + seed:byte(index)) % 2147483647 end
+	return ns.L(labels[hash % #labels + 1])
+end
+
+function D:PatternHelp(pattern)
+	return ns.L(pattern .. " rule")
+end
+
 function D:OnDeath()
+	latestDeathRecord = nil
 	if not ns:IsRecording("fights") then return end
 	if ns.context ~= "world" and ns.context ~= "world_combat" then return end
 	if root.IsBattleground() then return end
@@ -676,6 +755,8 @@ function D:OnDeath()
 	}
 	local t = Sintezza_RivalsPvPDB.deaths
 	t[#t + 1] = rec
+	latestDeathRecord = rec
+	if D.AttachCombatDeath then D:AttachCombatDeath(rec) end
 	while #t > DEATH_CAP do table.remove(t, 1) end
 	zoneBump(pos.mapID, "deaths")
 	if Sintezza_RivalsPvPDB.settings.alerts.screenshotOnDeath then pcall(Screenshot) end
@@ -740,6 +821,7 @@ end
 
 function D:ClearWorldRecording()
 	worldRecapGeneration = worldRecapGeneration + 1
+	latestDeathRecord = nil
 	pendingDurability = nil
 	root.CancelWorldDeathRecap()
 	if not root.IsBattleground() then self:StopRecording() end

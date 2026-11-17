@@ -9,6 +9,7 @@ local ns = root.PvP
 
 local U, X = ns.UI, ns.UIX
 local rgb = X.rgb
+local widgets = Sintezza_Theme:CreateWidgets(root.Theme)
 
 --------------------------------------------------------------------- copy popup
 local copyFrame
@@ -17,25 +18,29 @@ function U:CopyText(caption, text)
 	if not copyFrame then
 		copyFrame = ns.Theme.Window({
 			name = "Sintezza_RivalsPvPCopy", width = 640, height = 380,
+			windowAppearance = ns.WindowAppearance, defaultLayer = "DIALOG",
 			title = "Copy out", subtitle = root.Text("Ctrl+C — копировать", "Ctrl+C — copy"),
 		})
 		copyFrame:SetFrameStrata("DIALOG")
 		local eb = CreateFrame("EditBox", nil, copyFrame.content)
 		eb:SetMultiLine(true)
-		eb:SetFontObject(ChatFontNormal)
+		root.Theme:Font(eb, 12, "", root.Theme.text)
 		eb:SetWidth(580)
 		eb:SetAutoFocus(false)
 		eb:SetScript("OnEscapePressed", function() copyFrame:Hide() end)
-		local sf = ns.Theme.ScrollArea(copyFrame.content, 40, eb)
+		local sf, _, bar = widgets:ScrollFrame(copyFrame.content, eb, 40)
 		sf:SetPoint("TOPLEFT", 12, -8)
 		sf:SetPoint("BOTTOMRIGHT", -30, 8)
+		bar:SetPoint("TOPLEFT", sf, "TOPRIGHT", 4, 0)
+		bar:SetPoint("BOTTOMLEFT", sf, "BOTTOMRIGHT", 4, 0)
+		sf:HookScript("OnSizeChanged", function(_, width) eb:SetWidth(math.max(1, width)) end)
 		-- the box grows with its text; the bar follows
-		eb:SetScript("OnTextChanged", function() sf:Refresh() end)
+		eb:SetScript("OnTextChanged", function() sf:RefreshRange() end)
 		copyFrame.edit, copyFrame.scroll = eb, sf
 	end
 	copyFrame.title:SetText(caption)
 	copyFrame.edit:SetText(text or "")
-	copyFrame.scroll:ToTop()
+	copyFrame.scroll:SetVerticalScroll(0)
 	copyFrame.edit:HighlightText()
 	copyFrame:Show()
 	copyFrame.edit:SetFocus()
@@ -77,18 +82,21 @@ function U:Banner(title, sub, classToken, opts)
 		banner.icon:SetTexture("Interface\\WorldStateFrame\\ICONS-CLASSES")
 
 		-- three fixed rows with explicit widths, so nothing can overlap
-		banner.tag = banner:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		banner.tag = ns.Theme.Font(banner, 11, ns.Theme.C.muted)
 		banner.tag:SetPoint("TOPLEFT", 58, -8)
 		banner.tag:SetWidth(250)
 		banner.tag:SetJustifyH("LEFT")
 
-		banner.title = banner:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+		banner.title = ns.Theme.Font(banner, 14, ns.Theme.C.fg)
 		banner.title:SetPoint("TOPLEFT", 58, -24)
 		banner.title:SetWidth(370)
 		banner.title:SetJustifyH("LEFT")
 		banner.title:SetWordWrap(false)
+		Sintezza_Theme:TrackAppearance(banner.title, "state", function(owner)
+			owner:SetTextColor(rgb(banner.classToken))
+		end)
 
-		banner.sub = banner:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		banner.sub = ns.Theme.Font(banner, 11, ns.Theme.C.muted)
 		banner.sub:SetPoint("TOPLEFT", 58, -46)
 		banner.sub:SetWidth(370)
 		banner.sub:SetJustifyH("LEFT")
@@ -106,6 +114,7 @@ function U:Banner(title, sub, classToken, opts)
 
 	banner.tag:SetText((opts and opts.tag) or ("|cffff5555" .. root.Text("ОТСЛЕЖИВАЕМЫЙ ПРОТИВНИК", "WATCHED ENEMY") .. "|r"))
 	banner.onClick = opts and opts.onClick or nil
+	banner.classToken = classToken
 	local r, g, b = rgb(classToken)
 	banner.accent:SetColorTexture(r, g, b, 0.9)
 	banner.title:SetText(title or "")

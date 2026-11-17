@@ -74,13 +74,16 @@ local fields = {
     world_fight = Fields(person, {
         time = Stamp, result = Choice, started = Stamp, ended = Stamp, location = Shape(location),
         verifiedRecap = Boolean, helpers = participants, players = participants,
+        combatAttackers = participants, meterSession = Count, meterStartedAt = Stamp,
     }),
     world_death = Fields(location, {
         ts = Stamp, myLevel = Number, killer = Shape(person), killerSource = Plain, killerClass = Class,
         confidence = Plain, candidates = participants, attackers = participants, combatSeconds = Number,
         verifiedKiller = Boolean, crowd = Count, counted = Boolean,
+        combatAttackers = participants, meterSession = Count, meterStartedAt = Stamp,
     }),
-    world_incoming = { ts = Stamp, ended = Stamp, location = Shape(location), players = participants },
+    world_incoming = { ts = Stamp, ended = Stamp, location = Shape(location), players = participants,
+        meterSession = Count, meterStartedAt = Stamp },
     world_player = { name = Plain, class = Class, lastSeen = Stamp, defeats = Count, kills = Count, recaps = Count },
     world_nemesis = { name = Plain, class = Class, lastEncounter = Stamp, lastZone = Plain, killsOnMe = Count, killedByMe = Count },
     battleground = { name = Plain, time = Stamp, completed = Boolean, closed = Boolean, kills = Count, deaths = Count },
@@ -198,7 +201,7 @@ local function Export(scope)
     return rows
 end
 
-local CAPS = { sighting = 500, world_fight = 100, world_death = 100, world_incoming = 100, world_player = 5000,
+local CAPS = { sighting = ns.SIGHTING_LIMIT, world_fight = 100, world_death = 100, world_incoming = 100, world_player = 5000,
     world_nemesis = 300, battleground = 30, duel = 200 }
 
 local function Stage(rows)
@@ -281,10 +284,12 @@ end
 local function Apply(plan)
     local db, localDB = Sintezza_RivalsPvPDB, root.db
     local touched = {}
+    local addedSightings
     for _, row in ipairs(plan.rows) do
         local kind, id, value = row.kind, row.id, row.value
         if kind == "sighting" then
             AddSighting(db, id, value)
+            addedSightings = true
         elseif kind == "world_fight" then
             table.insert(localDB.fights, value)
         elseif kind == "world_death" then
@@ -304,6 +309,9 @@ local function Apply(plan)
         elseif kind == "duel" then
             table.insert(db.duels, value)
         end
+    end
+    if addedSightings and ns.Sightings and ns.Sightings.InvalidateRetention then
+        ns.Sightings:InvalidateRetention()
     end
     Ordered(localDB.fights, "time")
     Ordered(localDB.battlegrounds, "time", false, true)

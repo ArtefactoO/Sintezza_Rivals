@@ -14,6 +14,7 @@ local now = _G.GetServerTime or time
 local Safe = ns.Safe
 local MAX_PINS = 30   -- hard cap: blips are frames, and frames are the memory cost
 local pins = {}
+local widgets = Sintezza_Theme:CreateWidgets(root.Theme)
 
 local function paint(p, kind, class) ns.Map.Paint(p, kind, class) end
 
@@ -29,23 +30,19 @@ local function getPin(i)
 	p:SetScript("OnEnter", function(self)
 		local rec = self.rec
 		if not rec then return end
-		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-		GameTooltip:ClearLines()
+		local title, body
 		if self.kind == "sighting" then
-			GameTooltip:AddLine((rec.name or "?") .. (self.watched and ("  [" .. ns.L("WATCHED") .. "]") or ""), 1, 0.82, 0)
-			GameTooltip:AddLine(string.format("%s %s %s", rec.raceName or rec.race or "",
-				root.ClassName(rec.class) or "", rec.level or ""), 0.9, 0.9, 0.9)
-			GameTooltip:AddLine(self.onEdge and root.Text("За пределами миникарты", "Beyond minimap range")
-				or root.Text("Последняя встреча", "Last seen here"),
-				0.7, 0.7, 0.7)
+			title = (rec.name or "?") .. (self.watched and ("  [" .. ns.L("WATCHED") .. "]") or "")
+			body = string.format("%s %s %s", rec.raceName or rec.race or "", root.ClassName(rec.class) or "", rec.level or "") .. "\n" ..
+				(self.onEdge and root.Text("За пределами миникарты", "Beyond minimap range") or root.Text("Последняя встреча", "Last seen here"))
 		elseif self.kind == "death" then
-			GameTooltip:AddLine(ns.L("You died here"), 1, .56, .49)
-			GameTooltip:AddLine(ns.L("Killer: %s"):format(rec.killer and rec.killer.name or ns.L("unknown")),
-				0.9, 0.9, 0.9)
+			title = ns.L("You died here")
+			body = ns.L("Killer: %s"):format(rec.killer and rec.killer.name or ns.L("unknown"))
 		end
-		GameTooltip:Show()
+		if title then widgets:Tooltip(self, title, body, "cursor") end
 	end)
-	p:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	p:SetScript("OnLeave", function(self) Sintezza_Theme:HideTooltip(self) end)
+	p:HookScript("OnHide", function(self) Sintezza_Theme:HideTooltip(self) end)
 	pins[i] = p
 	return p
 end
@@ -102,6 +99,7 @@ function MM:Update()
 			local maxAge = (cfg.minutes or 30) * 60
 			local here = ns.Sightings and ns.Sightings.PlayerMap and ns.Sightings.PlayerMap()
 			for k, rec in pairs(Sintezza_RivalsPvPDB.sightings) do
+				if i >= MAX_PINS then break end
 				-- same zone only: a world coordinate from another continent means nothing
 				local watched = (not here or rec.lastMapID == here) and ns.Watchlist and ns.Watchlist:IsWatched(k)
 				local fresh = rec.lastMapID == here and (now() - (rec.lastSeen or 0)) <= maxAge
@@ -123,6 +121,7 @@ function MM:Update()
 			end
 			if cfg.deaths then
 				for _, d in ipairs(Sintezza_RivalsPvPDB.deaths) do
+					if i >= MAX_PINS then break end
 					if i < MAX_PINS and d.worldX and d.worldY and (now() - (d.ts or 0)) <= maxAge then
 						local ox, oy = offsetFor(py, px, d.worldY, d.worldX, radius, false)
 						if ox then

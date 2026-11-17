@@ -14,6 +14,14 @@ function W:IsWatched(key)
 	return key and Sintezza_RivalsPvPDB.watch[key] ~= nil
 end
 
+function W:SetIgnored(key, ignored)
+	if not key then return end
+	Sintezza_RivalsPvPDB.ignore[key] = ignored and true or nil
+	if root.Changed then root.Changed() end
+	if ns.HUD then ns.HUD:Update() end
+	if ns.UI then ns.UI:MarkDirty() end
+end
+
 function W:ToggleWatch(key, name, class)
 	if not key then return end
 	local w = Sintezza_RivalsPvPDB.watch

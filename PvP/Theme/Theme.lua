@@ -127,13 +127,10 @@ end
 function Theme.Tip(widget, title, text, anchor)
 	widget:HookScript("OnEnter", function(self)
 		if not title and not text then return end
-		GameTooltip:SetOwner(self, anchor or "ANCHOR_RIGHT")
-		GameTooltip:ClearLines()
-		if title then GameTooltip:AddLine(L(title), C.gold[1], C.gold[2], C.gold[3]) end
-		if text then GameTooltip:AddLine(L(text), 0.85, 0.85, 0.85, true) end
-		GameTooltip:Show()
+		widgets:Tooltip(self, L(title) or "", L(text) or "", "cursor")
 	end)
-	widget:HookScript("OnLeave", function() GameTooltip:Hide() end)
+	widget:HookScript("OnLeave", function(self) Sintezza_Theme:HideTooltip(self) end)
+	widget:HookScript("OnHide", function(self) Sintezza_Theme:HideTooltip(self) end)
 end
 
 --------------------------------------------------------------------- window
@@ -177,7 +174,7 @@ function Theme.Window(opts)
 		icon = opts.icon or Sintezza_Theme.icons.Sintezza_Rivals,
 		title = L(opts.title),
 		addonName = opts.addonName,
-		subtitle = L(opts.subtitle) or "",
+		subtitle = opts.subtitle and L(opts.subtitle) or nil,
 	})
 	f.header, f.title, f.subtitle, f.closeButton = header, header.title, header.subtitle, header.close
 

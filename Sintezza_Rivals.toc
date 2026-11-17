@@ -4,12 +4,12 @@
 ## X-License: MIT
 ## Notes: World PvP journal, battleground history and nameplate markers.
 ## Notes-ruRU: История мирового PvP и полей боя, метки противников.
-## Version: 1.14.0
+## Version: 1.15.0
 ## IconTexture: Interface\AddOns\Sintezza_Theme\Media\Icons\Sintezza_Rivals
 ## Category: PvP
 ## SavedVariablesPerCharacter: Sintezza_RivalsDB, Sintezza_RivalsPvPDB, Sintezza_RivalsPvPCharDB
 ## Dependencies: Sintezza_Theme
-## OptionalDeps: Sintezza_UI, EllesmereUINameplates, TomTom
+## OptionalDeps: Sintezza_UI, EllesmereUINameplates, TomTom, Sintezza_Perf
 
 
 Locales.lua
@@ -44,3 +44,4 @@ PvP\Options\Options.lua
 Data.lua
 PvP\Options\Pages.lua
 PvPIntegration.lua
+PerfBridge.lua

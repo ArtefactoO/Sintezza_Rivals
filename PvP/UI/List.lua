@@ -12,6 +12,7 @@ local now, rgb, ago = X.now, X.rgb, X.ago
 local coords = X.coords
 local ROW_H, rows, data = X.ROW_H, X.rows, X.data
 local GROUP_ARROW_WIDTH = 16
+local widgets = Sintezza_Theme:CreateWidgets(root.Theme)
 
 -- column index and spec under an x offset into the row
 function X.colAt(x)
@@ -31,22 +32,22 @@ local function rowEnter(self)
 	self.hl:Show()
 	local d = self.desc
 	if not d or not d.kind then return end
-	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-	GameTooltip:ClearLines()
+	local lines = {}
 	local rec = d.rec
 	if d.kind == "fight" and rec and rec.attackers then
-		GameTooltip:AddLine(root.Text("Добивающий удар: %s", "Killing blow: %s"):format(rec.killer and rec.killer.name or "—"), 1, 0.82, 0)
+		lines[#lines + 1] = root.Text("Добивающий удар: %s", "Killing blow: %s"):format(rec.killer and rec.killer.name or "—")
 		for _, a in ipairs(rec.attackers) do
 			local r, g, b = ns.ClassRGB(a.class)
 			local damage = a.damage and root.Text("%d урона", "%d damage"):format(a.damage) or ""
-			GameTooltip:AddDoubleLine(a.name or a.guid or "—", damage, r, g, b, 0.85, 0.85, 0.85)
+			lines[#lines + 1] = string.format("|cff%02x%02x%02x%s|r  %s", math.floor(r * 255 + .5),
+				math.floor(g * 255 + .5), math.floor(b * 255 + .5), a.name or a.guid or "—", damage)
 		end
 	elseif not (d.place and d.place ~= "") then
-		GameTooltip:Hide()
+		Sintezza_Theme:HideTooltip(self)
 		return
 	end
-	if d.place and d.place ~= "" then GameTooltip:AddLine(d.place, 0.85, 0.85, 0.85, true) end
-	GameTooltip:Show()
+	if d.place and d.place ~= "" then lines[#lines + 1] = d.place end
+	widgets:Tooltip(self, root.Text("Подробности боя", "Fight details"), table.concat(lines, "\n"), "cursor")
 end
 X.rowEnter = rowEnter
 
@@ -60,10 +61,10 @@ local function rowClick(self, button)
 		if IsShiftKeyDown() then
 			local ig = Sintezza_RivalsPvPDB.ignore
 			if ig[d.key] then
-				ig[d.key] = nil
+				ns.Watchlist:SetIgnored(d.key, false)
 				ns:Notify("action", "alerts for %s are back on", tostring(d.name))
 			else
-				ig[d.key] = true
+				ns.Watchlist:SetIgnored(d.key, true)
 				ns:Notify("action", "ignoring %s: no more alerts about them", tostring(d.name))
 			end
 			U:MarkDirty()
@@ -112,7 +113,7 @@ local function rowClick(self, button)
 	if d.name then
 		local key = d.key
 		if not key and d.kind == "rivalsPlayerScore" then key = false end
-		U:ShowDetail(d.name, key, d.kind == "duel")
+		U:ShowDetail(d.name, key, d.kind == "duel", d.cardContext)
 	end
 end
 
@@ -121,7 +122,7 @@ local function rowButtonClick(self)
 	local d = self:GetParent().desc
 	if not d then return end
 	if d.unignore and d.key then
-		Sintezza_RivalsPvPDB.ignore[d.key] = nil
+		ns.Watchlist:SetIgnored(d.key, false)
 		ns:Notify("action", "alerts for %s are back on", tostring(d.name))
 		if ns.Nameplates then ns.Nameplates:RefreshAll() end
 		U:MarkDirty()
@@ -131,7 +132,7 @@ end
 
 local function rowLeave(self)
 	self.hl:Hide()
-	GameTooltip:Hide()
+	Sintezza_Theme:HideTooltip(self)
 end
 
 local function buildRow(i)
@@ -170,6 +171,7 @@ local function buildRow(i)
 
 	r:SetScript("OnEnter", rowEnter)
 	r:SetScript("OnLeave", rowLeave)
+	r:SetScript("OnHide", rowLeave)
 	r:SetScript("OnClick", rowClick)
 
 	rows[i] = r
@@ -179,7 +181,7 @@ end
 local function cellOf(r, i, spec, x, width)
 	local fs = r.cells[i]
 	if not fs then
-		fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		fs = r:CreateFontString(nil, "OVERLAY")
 		-- same size for every alphabet, so a Chinese name cannot enlarge the row
 		root.InterfaceFonts:ApplyFamily(fs, 10, "", root.db)
 		r.cells[i] = fs
@@ -277,9 +279,9 @@ local function paint(r, desc, index, cols)
 		local start = i == markCol and nameX or x + (i == 2 and (desc.indent or 0) or 0)
 		local fs = cellOf(r, i, spec, start, spec[2] - (start - x))
 		if i ~= agoCol then fs:SetText(desc.cells[i] or "") end
-		if tone and (i == 1 or desc.indent) then fs:SetTextColor(tone[1], tone[2], tone[3], 1)
-		elseif i == markCol and desc.color then fs:SetTextColor(rgb(desc.color))
+		if i == markCol and (desc.class or desc.color) then fs:SetTextColor(rgb(desc.class or desc.color))
 		elseif i == markCol then fs:SetTextColor(0.95, 0.95, 0.95)
+		elseif tone and (i == 1 or desc.indent) then fs:SetTextColor(tone[1], tone[2], tone[3], 1)
 		else fs:SetTextColor(0.9, 0.9, 0.9) end
 		x = x + spec[2] + 6
 	end

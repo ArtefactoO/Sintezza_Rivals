@@ -1,14 +1,9 @@
--- Sintezza Rivals / Options/Pages.lua
---
--- The contents of the settings window: one builder per category, each a
--- column of rows built from the Theme widgets. Options.lua owns the window,
--- the navigation and the search around them.
-
 local ADDON, root = ...
 local ns = root.PvP
 
 local O = ns.Options
 local T, Text = ns.Theme, root.Text
+local W = Sintezza_Theme:CreateWidgets(root.Theme)
 
 --------------------------------------------------------------------- helpers
 local function setting(path)
@@ -27,219 +22,233 @@ local function set(path, v)
 	t[k] = v
 end
 
--- every control is a row; the row owns the label and the explanation
+local function add(parent, row, y, help)
+	if row.label then root.Theme:Font(row.label, 11, "", root.Theme.text, "body") end
+	parent.rows = parent.rows or {}
+	parent.rows[#parent.rows + 1] = row
+	row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, y)
+	row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, y)
+	if help and help ~= "" then W:Help(row, T.L(help), row.label or row.title) end
+	return row, y - row:GetHeight() - 3
+end
+
 local function toggleRow(parent, y, name, help, path, onChange)
-	local row = T.Row(parent, y, name, help)
-	local toggle = T.Toggle(row, function() return get(path) end, function(v)
+	local row = W:Toggle(parent, T.L(name), function() return get(path) end, function(v)
 		set(path, v)
 		if onChange then onChange(v) end
+		if parent.RefreshState then parent:RefreshState() end
 	end)
-	T.AttachControl(row, toggle, T.TOGGLE_H)
-	row.control = toggle
-	return row, y - row:GetHeight()
+	row.control = row
+	return add(parent, row, y, help)
 end
 
 local function sliderRow(parent, y, name, help, path, min, max, step, format, onChange)
-	local row = T.Row(parent, y, name, help)
-	local slider = T.Slider(row, 210, min, max, step,
+	local leaf = path[#path]
+	local suffix = leaf == "minutes" and Text(" мин", " min")
+		or (leaf == "dedupeSeconds" or leaf == "watchSeconds") and Text(" с", " s") or nil
+	local row = W:SliderRow(parent, T.L(name), min, max, step,
 		function() return get(path) end,
 		function(v)
 			set(path, v)
 			if onChange then onChange(v) end
-		end, format)
-	T.AttachControl(row, slider, 32)
-	row.control = slider
-	return row, y - row:GetHeight()
+		end, suffix)
+	row.control = row
+	return add(parent, row, y, help)
 end
 
 local function choiceRow(parent, y, name, help, values, path, onChange)
-	local row = T.Row(parent, y, name, help)
-	local sel = T.Select(row, 170, values,
-		function() return get(path) end,
-		function(v) set(path, v) end,
-		onChange)
-	T.AttachControl(row, sel, 26)
-	row.control = sel
-	return row, y - row:GetHeight()
+	local choices, order = {}, {}
+	for index, entry in ipairs(values) do choices[entry[1]], order[entry[1]] = T.L(entry[2]), index end
+	local row = W:ChoiceRow(parent, T.L(name), choices, function() return get(path) end,
+		function(value) set(path, value); if onChange then onChange(value) end end, order)
+	row.control = row
+	return add(parent, row, y, help)
 end
 
 local function buttonRow(parent, y, name, help, label, onClick, width)
-	local row = T.Row(parent, y, name, help)
-	local b = T.Button(row, label, width or 140, onClick)
-	T.AttachControl(row, b, 26)
+	local row = W:SettingRow(parent, T.L(name))
+	local b = W:Button(row, T.L(label), onClick)
+	b:SetSize(width or 140, 24)
+	b:SetPoint("RIGHT")
 	row.control = b
-	return row, y - row:GetHeight()
+	return add(parent, row, y, help)
 end
 
--- two actions that belong to one setting, side by side: "Add" and "Clear" read
--- as two things you can do, where one button labelled "Add / clear" reads as a
--- guess about which one you are going to get
 local function buttonsRow(parent, y, name, help, first, second)
-	local row = T.Row(parent, y, name, help)
+	local row = W:SettingRow(parent, T.L(name))
 	local w1 = first[3] or 110
 	local w2 = second and (second[3] or 110) or 0
 	local holder = CreateFrame("Frame", nil, row)
 	holder:SetSize(w1 + (second and (w2 + 8) or 0), 26)
-	local a = T.Button(holder, first[1], w1, first[2])
+	local a = W:Button(holder, T.L(first[1]), first[2])
+	a:SetSize(w1, 24)
 	a:SetPoint("TOPLEFT")
 	row.control = a
 	if second then
-		local b = T.Button(holder, second[1], w2, second[2])
+		local b = W:Button(holder, T.L(second[1]), second[2])
+		b:SetSize(w2, 24)
 		b:SetPoint("TOPLEFT", a, "TOPRIGHT", 8, 0)
 		row.control2 = b
 	end
-	T.AttachControl(row, holder, 26)
-	return row, y - row:GetHeight()
+	holder:SetPoint("RIGHT")
+	return add(parent, row, y, help)
 end
 
 local function header(parent, y, text)
-	local _, n = T.HeaderRow(parent, y, text)
+	local section = W:Section(parent, T.L(text), nil, "settings")
+	section:SetHeight(section.headerHeight + 8)
+	local _, n = add(parent, section, y)
 	return n
 end
 
 --------------------------------------------------------------------- pages
-local function Advanced(parent, y, build)
-	local label = Text("Дополнительно", "Advanced")
-	local open
-	local row, n
-	row, n = buttonRow(parent, y, label, nil, Text("Развернуть", "Expand"), function()
-		open = not open
-		row.control.label:SetText(open and Text("Свернуть", "Collapse") or Text("Развернуть", "Expand"))
-		O:ReflowCurrent()
-	end)
-	local from = #parent.rows + 1
-	local bottom = build(parent, n)
-	for index = from, #parent.rows do
-		parent.rows[index].visibleWhen = function(filter) return open or filter ~= nil end
-	end
-	return bottom
-end
-
 local function buildRecording(parent)
-	local n = header(parent, -10, Text("Запись PvP", "PvP recording"))
-	local controls = {}
-	local function RefreshState()
-		local enabled = ns:IsRecording() == true
-		for _, control in ipairs(controls) do
-			if control.slider then
-				control.slider:EnableMouse(enabled)
-				control:SetAlpha(enabled and 1 or 0.5)
-			else
-				control:SetEnabled(enabled)
-			end
-		end
-	end
-	local _
-	_, n = toggleRow(parent, n, Text("Записывать PvP", "Record PvP"), nil, { "enabled" }, function(value)
-		ns:OnRecordingChanged(value)
-		RefreshState()
-		O:ReflowCurrent()
-	end)
-	local paused = T.Row(parent, n, Text("Запись и оповещения приостановлены. История доступна.",
-		"Recording and alerts are paused. History is available."))
-	paused.visibleWhen = function() return not ns:IsRecording() end
-	n = n - paused:GetHeight()
+    local n, controls = header(parent, -8, Text("Запись PvP", "PvP recording")), {}
+    local function Recording(module) return ns:IsRecording(module) == true end
+    local function Observing() return Recording("enemies") end
+    local function CanSound()
+        return ns.Sightings and ns.Sightings.CanPlayAlertSound and ns.Sightings:CanPlayAlertSound() or false
+    end
+    local preview
+    local function RefreshState()
+        for _, entry in ipairs(controls) do entry.row:SetAvailable(entry.when() == true) end
+        if preview then preview:SetEnabled(CanSound()) end
+    end
+    parent.RefreshState = RefreshState
+    local function Toggle(name, path, help, when, changed)
+        local row
+        row, n = toggleRow(parent, n, name, help, path, changed)
+        controls[#controls + 1] = { row = row, when = when or function() return Recording() end }
+        return row
+    end
+    local function Slider(name, path, low, high, step, help, when)
+        local row
+        row, n = sliderRow(parent, n, name, help, path, low, high, step)
+        controls[#controls + 1] = { row = row, when = when or Observing }
+        return row
+    end
+    local _, row
+    _, n = toggleRow(parent, n, Text("Записывать PvP", "Record PvP"), "Recording help", { "enabled" }, function(value)
+        ns:OnRecordingChanged(value)
+        O:ReflowCurrent()
+    end)
+    local paused = W:SettingRow(parent, Text("Запись и оповещения приостановлены. История доступна.",
+        "Recording and alerts are paused. History is available."))
+    paused.label:SetPoint("RIGHT", -2, 0)
+    paused.visibleWhen = function() return not Recording() end
+    _, n = add(parent, paused, n)
+    Toggle(Text("Встречи", "Encounters"), { "modules", "enemies" }, "Encounters help")
+    Toggle(Text("Бои в мире", "World fights"), { "modules", "fights" }, "World fights help", nil,
+        function(value) if not value then ns.Deaths:StopRecording() end end)
+    Toggle(Text("Поля боя", "Battlegrounds"), { "modules", "battlegrounds" }, nil, nil,
+        function(value) if not value then ns.Deaths:StopRecording() end end)
+    Toggle(Text("Дуэли", "Duels"), { "modules", "duels" }, nil, nil,
+        function(value) if not value then ns.Duels:StopRecording() end end)
+    Toggle(Text("Снимок после PvP-смерти в мире", "Screenshot after a world PvP death"),
+        { "alerts", "screenshotOnDeath" }, "World screenshot help", function() return Recording("fights") end)
 
-	local function Toggle(name, path, changed)
-		local row
-		row, n = toggleRow(parent, n, name, nil, path, changed)
-		controls[#controls + 1] = row.control
-	end
-	Toggle(Text("Встречи", "Encounters"), { "modules", "enemies" })
-	Toggle(Text("Бои в мире", "World fights"), { "modules", "fights" }, function(value)
-		if not value then ns.Deaths:StopRecording() end
-	end)
-	Toggle(Text("Поля боя", "Battlegrounds"), { "modules", "battlegrounds" }, function(value)
-		if not value then ns.Deaths:StopRecording() end
-	end)
-	Toggle(Text("Дуэли", "Duels"), { "modules", "duels" }, function(value)
-		if not value then ns.Duels:StopRecording() end
-	end)
+    n = header(parent, n, Text("Источники наблюдений", "Observation sources"))
+    Toggle(Text("Неймплейты противников", "Enemy nameplates"), { "sightings", "fromNameplates" }, nil, Observing)
+    Toggle(Text("Выбранная цель", "Current target"), { "sightings", "fromTarget" }, nil, Observing)
+    Toggle(Text("Наведение мыши", "Mouseover"), { "sightings", "fromMouseover" }, nil, Observing)
+    Slider(Text("Интервал повторной встречи", "Repeat encounter interval"), { "sightings", "dedupeSeconds" },
+        10, 300, 10, "Repeat encounter help")
 
-	n = header(parent, n, Text("Игрок из списка наблюдения", "Watched players"))
-	Toggle(Text("Сообщение в чат", "Chat message"), { "alerts", "chat", "watched" })
-	Toggle(Text("Плашка на экране", "On-screen banner"), { "alerts", "banner" })
-	Toggle(Text("Звук", "Sound"), { "alerts", "soundOnSighting" })
-	n = header(parent, n, Text("Опасная зона", "Dangerous zone"))
-	Toggle(Text("Сообщение в чат", "Chat message"), { "alerts", "chat", "zone" })
+    n = header(parent, n, Text("Наблюдение и оповещения", "Watchlist and alerts"))
+    Slider(Text("Наблюдать после повторных смертей", "Watch after repeated deaths"), { "autoWatchKills" }, 0, 10, 1,
+        "Auto watch help", function() return Recording("fights") end)
+    Slider(Text("Интервал оповещения", "Alert interval"), { "alerts", "watchSeconds" }, 5, 120, 5, "Alert interval help")
+    Slider(Text("Порог разницы уровней для встреч", "Sighting alert level cutoff"), { "alerts", "minLevelDiff" },
+        -30, 0, 1, "Sighting level help")
+    Toggle(Text("Предупреждать о скрытности рядом", "Warn about nearby stealth"), { "alerts", "stealthCast" },
+        "Stealth alert help", Observing)
+    Toggle(Text("Плашки оповещений", "On-screen alerts"), { "alerts", "banner" }, "Shared alert outputs help", Observing)
+    Toggle(Text("Звуки оповещений", "Alert sounds"), { "alerts", "soundOnSighting" }, "Alert sounds help",
+        function() return Observing() and CanSound() end)
+    Toggle(Text("Другой звук разбойников и друидов", "Alternate sound for rogues and druids"),
+        { "alerts", "stealthSound" }, "Alternate alert sound help", function()
+            return Observing() and CanSound() and get({ "alerts", "soundOnSighting" })
+                and ns.Sightings.HasAlternateAlertSound and ns.Sightings:HasAlternateAlertSound() or false
+        end)
+    row, n = buttonRow(parent, n, Text("Проверка звука", "Sound preview"), "Sound preview help",
+        Text("Проиграть", "Play"), function()
+            if not (ns.Sightings and ns.Sightings:PlayAlertSound(false)) then
+                ns:Print(Text("Не удалось проиграть звук. Проверь настройки звука игры.",
+                    "Could not play the alert sound. Check the game's sound settings."))
+            end
+        end, 100)
+    preview = row.control
 
-	return Advanced(parent, n, function(_, y)
-		n = y
-		local row
-		row, n = sliderRow(parent, n, Text("Интервал повторной встречи", "Repeat encounter interval"),
-			nil, { "sightings", "dedupeSeconds" }, 10, 300, 10, function(v) return T.L("%d s"):format(v) end)
-		controls[#controls + 1] = row.control
-		row, n = sliderRow(parent, n, Text("Интервал оповещения", "Alert interval"),
-			nil, { "alerts", "watchSeconds" }, 5, 120, 5, function(v) return T.L("%d s"):format(v) end)
-		controls[#controls + 1] = row.control
-		Toggle("Watch nameplates", { "sightings", "fromNameplates" })
-		Toggle("Watch your target", { "sightings", "fromTarget" })
-		Toggle("Watch mouseover", { "sightings", "fromMouseover" })
-		Toggle("You died", { "alerts", "chat", "death" })
-		Toggle("You killed somebody", { "alerts", "chat", "kill" })
-		Toggle("Duel results", { "alerts", "chat", "duel" })
-		Toggle("Every new enemy seen", { "alerts", "chat", "sighting" })
-		Toggle("Your own actions", { "alerts", "chat", "action" })
-		Toggle("Warn when someone stealths next to you", { "alerts", "stealthCast" })
-		Toggle("Different sound for rogues and druids", { "alerts", "stealthSound" })
-		Toggle("Screenshot when you die", { "alerts", "screenshotOnDeath" })
-		Toggle("A line on unit tooltips", { "alerts", "unitTooltip" })
-		row, n = sliderRow(parent, n, "Ignore enemies this far below you",
-			"A level difference. At -5 an enemy five or more levels under you is recorded but never alerts, because they are not a threat. Zero alerts on everyone.",
-			{ "alerts", "minLevelDiff" }, -30, 0, 1,
-			function(v) return v == 0 and T.L("everyone alerts") or T.L("%d levels"):format(v) end)
-		controls[#controls + 1] = row.control
-		row, n = sliderRow(parent, n, Text("Автоматически отмечать после смертей", "Watch after repeated deaths"),
-			Text("0 отключает автоматические отметки.", "0 turns off automatic watching."),
-			{ "autoWatchKills" }, 0, 10, 1)
-		controls[#controls + 1] = row.control
-		RefreshState()
-		return n
-	end)
+    n = header(parent, n, Text("Сообщения в чат", "Chat messages"))
+    Toggle(Text("Наблюдение и скрытность", "Watchlist and stealth alerts"), { "alerts", "chat", "watched" }, nil, Observing)
+    Toggle(Text("Сводка опасности при входе в зону", "Zone danger summary"), { "alerts", "chat", "zone" }, "Zone summary help")
+    Toggle("You died", { "alerts", "chat", "death" }, nil, function() return Recording("fights") end)
+    Toggle("You killed somebody", { "alerts", "chat", "kill" }, nil, function() return Recording("fights") end)
+    Toggle("Duel results", { "alerts", "chat", "duel" }, nil, function() return Recording("duels") end)
+    Toggle("Every new enemy seen", { "alerts", "chat", "sighting" }, nil, Observing)
+    Toggle("Your own actions", { "alerts", "chat", "action" }, "Action chat help", function() return true end)
+    RefreshState()
+    return n
 end
 
-local function buildMap(parent, y)
-	local function refreshMap() if ns.Map then ns.Map:Update() end end
-	local _, n = toggleRow(parent, y, Text("Точки на карте и миникарте", "Map and minimap pins"), nil,
-		{ "modules", "map" }, refreshMap)
-	_, n = toggleRow(parent, n, root.Text("Места боев на карте мира", "PvP fights on the world map"),
-		root.Text("Красные мечи отмечают смерти, зеленые — добивания.", "Red swords mark your deaths. Green swords mark your kills."),
-		{ "map", "enabled" }, refreshMap)
-	_, n = toggleRow(parent, n, "Pins for enemy sightings", "", { "map", "sightings" }, refreshMap)
-	_, n = toggleRow(parent, n, "Pins for your deaths", "", { "map", "deaths" }, refreshMap)
-	_, n = toggleRow(parent, n, "Pins for your kills", "", { "map", "kills" }, refreshMap)
-	_, n = toggleRow(parent, n, "Hand coordinates to TomTom as well",
-		"When TomTom is installed, clicking a coordinate also sets a waypoint there.",
-		{ "map", "useTomTom" })
-	_, n = sliderRow(parent, n, "Hide sightings older than",
-		"Deaths and kills are always shown.", { "map", "minutes" }, 10, 360, 10,
-		function(v) return T.L("%d min"):format(v) end)
-	_, n = toggleRow(parent, n, "Minimap blips",
-		"Marks where you saw an enemy last. It is your own position at the time, not theirs now.",
-		{ "minimap", "enabled" })
-	_, n = toggleRow(parent, n, "Minimap: watched enemies only",
-		"Off shows every recent sighting.", { "minimap", "watchedOnly" })
-	_, n = toggleRow(parent, n, "Keep watched blips on the minimap edge",
-		"When they were last seen further away than the minimap reaches, the blip sticks to the rim so the direction still reads.",
-		{ "minimap", "floatOnEdge" })
-	_, n = toggleRow(parent, n, "Your deaths on the minimap",
-		root.Text("Красные мечи остаются на тот же срок, что и метки встреч.",
-			"Red swords stay visible for the same period as sightings."), { "minimap", "deaths" })
-	_, n = sliderRow(parent, n, "Hide blips older than", "",
-		{ "minimap", "minutes" }, 5, 120, 5, function(v) return T.L("%d min"):format(v) end)
-	return n
+local function buildMap(parent)
+    local n = header(parent, -8, Text("Карта и метки", "Map and pins"))
+    local controls = {}
+    local function Active() return get({ "modules", "map" }) ~= false end
+    local function RefreshState()
+        for _, entry in ipairs(controls) do entry.row:SetAvailable(entry.when() == true) end
+    end
+    parent.RefreshState = RefreshState
+    local function RefreshMap()
+        if ns.Map then ns.Map:Update() end
+        if ns.MinimapPins then ns.MinimapPins:Update() end
+    end
+    local function Toggle(name, path, help, when)
+        local row
+        row, n = toggleRow(parent, n, name, help, path, RefreshMap)
+        if when then controls[#controls + 1] = { row = row, when = when } end
+        return row
+    end
+    local function Age(name, path, low, high, help, when)
+        local row
+        row, n = sliderRow(parent, n, name, help, path, low, high, 5, nil, RefreshMap)
+        controls[#controls + 1] = { row = row, when = when }
+    end
+    Toggle(Text("Метки на карте и миникарте", "Map and minimap pins"), { "modules", "map" }, "Map master help")
+    n = header(parent, n, Text("Карта мира: встречи", "World map: sightings"))
+    Toggle(Text("Показывать встречи", "Show enemy sightings"), { "map", "sightings" }, nil, Active)
+    Age(Text("Скрывать встречи старше", "Hide sightings older than"), { "map", "minutes" }, 10, 360,
+        "Map sighting age help", function() return Active() and get({ "map", "sightings" }) end)
+    n = header(parent, n, Text("Карта мира: бои", "World map: fights"))
+    Toggle(Text("Показывать места боев", "Show fight locations"), { "map", "enabled" }, "Map fight pins help", Active)
+    local function Fights() return Active() and get({ "map", "enabled" }) end
+    Toggle(Text("Ваши смерти", "Your deaths"), { "map", "deaths" }, nil, Fights)
+    Toggle(Text("Ваши добивания", "Your killing blows"), { "map", "kills" }, nil, Fights)
+    n = header(parent, n, Text("Миникарта", "Minimap"))
+    Toggle(Text("Показывать метки", "Show minimap blips"), { "minimap", "enabled" }, "Minimap position help", Active)
+    local function Minimap() return Active() and get({ "minimap", "enabled" }) end
+    Toggle(Text("Только отслеживаемые игроки", "Watched players only"), { "minimap", "watchedOnly" }, nil, Minimap)
+    Toggle(Text("Оставлять отслеживаемых на краю", "Keep watched blips on the edge"),
+        { "minimap", "floatOnEdge" }, "Minimap edge help", Minimap)
+    Toggle(Text("Ваши смерти на миникарте", "Your deaths on the minimap"), { "minimap", "deaths" }, nil, Minimap)
+    Age(Text("Скрывать метки старше", "Hide blips older than"), { "minimap", "minutes" }, 5, 120,
+        "Minimap age help", Minimap)
+    n = header(parent, n, Text("Координаты", "Coordinates"))
+    Toggle(Text("Передавать координаты в TomTom", "Send coordinates to TomTom"), { "map", "useTomTom" }, "TomTom help")
+    RefreshState()
+    return n
 end
 
 local function buildWindow(parent)
 	local y = -10
-	local n = header(parent, y, "Look")
+	local n = header(parent, y, Text("Оформление", "Appearance"))
 	local _
-	local appearance = T.Row(parent, n, root.Text("Оформление", "Appearance"))
-	T.AttachControl(appearance, T.Button(appearance, "Sintezza Theme", 170,
-		function() Sintezza_Theme:OpenSettings() end), 26)
-	n = n - appearance:GetHeight()
-	local shared = T.Row(parent, n, root.Text("Окно и миникарта", "Window and minimap"), "")
-	local block = Sintezza_Theme:CreateWindowOptions(shared, root.Theme, {
+	_, n = buttonRow(parent, n, Text("Тема и язык", "Theme and language"), "Appearance help", "Sintezza Theme",
+		function() Sintezza_Theme:OpenSettings() end, 170)
+	_, n = toggleRow(parent, n, Text("Сведения в подсказках игроков", "Rivals info in player tooltips"), "Unit tooltip help", { "alerts", "unitTooltip" })
+	n = header(parent, n, Text("Окно и миникарта", "Window and minimap"))
+	local block = Sintezza_Theme:CreateWindowOptions(parent, root.Theme, {
+		inset = 0, labelRole = "body",
 		windows = { { prefs = ns.WindowAppearance } },
 		getMinimap = function() return not root.db.minimap.hide end,
 		setMinimap = function(value)
@@ -247,18 +256,9 @@ local function buildWindow(parent)
 			root.Launcher:RefreshMinimap(root.db.minimap)
 		end,
 	})
-	shared.name:Hide()
-	shared.fixedHeight = block:GetHeight() + 6
-	shared:SetHeight(shared.fixedHeight)
-	block:SetPoint("TOPLEFT", 10, -3)
-	block:SetPoint("TOPRIGHT", -10, -3)
-	shared.searchText = ns.Lower(root.Text(
-		"окно миникарта масштаб непрозрачность слой закрепить положение",
-		"window minimap scale opacity layer lock position"))
-	shared.control = block
-	n = n - shared:GetHeight()
+	_, n = add(parent, block, n)
 
-	n = header(parent, n, "Opening it")
+	n = header(parent, n, Text("Открытие окна", "Opening the window"))
 	_, n = choiceRow(parent, n, "Open the window on",
 		"Which tab the window starts on.",
 		{ { 0, "Last used" }, { 9, root.Text("История PvP", "PvP history") },
@@ -267,7 +267,7 @@ local function buildWindow(parent)
 	_, n = buttonRow(parent, n, "Keybindings",
 		"Opens the game key bindings; look for the Sintezza Rivals section.",
 		"Open bindings", function()
-			if SettingsPanel and SettingsPanel.OpenToCategory and Settings and Settings.KEYBINDINGS_CATEGORY_ID then
+            if Settings and type(Settings.OpenToCategory) == "function" and Settings.KEYBINDINGS_CATEGORY_ID then
 				pcall(Settings.OpenToCategory, Settings.KEYBINDINGS_CATEGORY_ID)
 			elseif KeyBindingFrame_LoadUI then
 				pcall(KeyBindingFrame_LoadUI)
@@ -277,7 +277,7 @@ local function buildWindow(parent)
 			end
 		end)
 
-	n = header(parent, n, "On-screen strip")
+	n = header(parent, n, Text("Панель встреч", "Encounter strip"))
 	_, n = toggleRow(parent, n, "Show the strip",
 		"A thin bar you leave on screen: recent enemy sightings in this zone and watched enemies nearby.",
 		{ "hud", "show" }, function() if ns.HUD then ns.HUD:Update() end end)
@@ -325,7 +325,7 @@ O.PAGES = {
 	{ key = "recording", label = Text("Запись и оповещения", "Recording and alerts"),
 		title = Text("Запись и оповещения", "Recording and alerts"), build = buildRecording },
 	{ key = "markers", label = Text("Карта", "Map"), title = Text("Карта и миникарта", "Map and minimap"),
-		build = function(parent) return buildMap(parent, -10) end },
+		build = buildMap },
 	{ key = "window", label = Text("Окно и миникарта", "Window and minimap"),
 		title = Text("Окно и миникарта", "Window and minimap"), build = buildWindow },
 	{ key = "diag", label = "Diagnostics", title = "Diagnostics",

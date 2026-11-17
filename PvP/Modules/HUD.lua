@@ -19,6 +19,7 @@ ns.modules.HUD = H
 
 local now = _G.GetServerTime or time
 local bar
+local widgets = Sintezza_Theme:CreateWidgets(root.Theme)
 
 --------------------------------------------------------------------- helpers
 local function nearby()
@@ -67,16 +68,12 @@ local function build()
 		if click == "RightButton" then ns.Options:Open() else ns.UI:Toggle() end
 	end)
 	bar:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-		GameTooltip:ClearLines()
-		GameTooltip:AddLine("Sintezza Rivals", TC.gold[1], TC.gold[2], TC.gold[3])
-		GameTooltip:AddLine(self.tipText or "", 0.85, 0.85, 0.85, true)
-		GameTooltip:AddLine(" ")
-		GameTooltip:AddLine(root.Text("ЛКМ — окно, ПКМ — настройки. Перетащи, чтобы переместить панель.",
-			"Left-click to open, right-click for settings. Drag to move the bar."), 0.5, 1, 0.5, true)
-		GameTooltip:Show()
+		widgets:Tooltip(self, "Sintezza Rivals", (self.tipText or "") .. "\n\n" .. root.Text(
+			"ЛКМ — окно, ПКМ — настройки. Перетащи, чтобы переместить панель.",
+			"Left-click to open, right-click for settings. Drag to move the bar."), "cursor")
 	end)
-	bar:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	bar:SetScript("OnLeave", function(self) Sintezza_Theme:HideTooltip(self) end)
+	bar:HookScript("OnHide", function(self) Sintezza_Theme:HideTooltip(self) end)
 
 	bar:SetPoint(store.point or "TOP", UIParent, store.point or "TOP", store.x or 0, store.y or -220)
 	if store.scale then bar:SetScale(store.scale) end

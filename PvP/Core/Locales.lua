@@ -246,7 +246,6 @@ L.ruRU = {
     ["Ignore"] = "Игнорировать", ["Stop ignoring"] = "Снять игнор",
     ["Show on map"] = "Показать на карте", ["Copy"] = "Копировать", ["Actions"] = "Действия",
     ["Last sighting on map"] = "Последняя встреча на карте",
-    ["Hide nameplate marker"] = "Скрыть метку на неймплейте", ["Restore nameplate marker"] = "Вернуть метку на неймплейте",
     ["Marked spot"] = "Отмеченное место",
     ["%s %s, level %s"] = "%s %s, уровень %s",
     ["%s, %s ago, seen %dx"] = "%s, %s назад, встреч: %d",
@@ -295,6 +294,154 @@ L.ruRU = {
 ns.LOCALE = root.locale == "ruRU" and L.ruRU or {}
 
 local ru = L.ruRU
+
+local cardText = {
+    ["World screenshot help"] = { "Takes a screenshot after a recorded world PvP death. Battleground deaths do not use this option.",
+        "Делает снимок после записанной PvP-смерти в открытом мире. Для смертей на полях боя эта настройка не применяется." },
+    ["Auto watch help"] = { "Adds an opponent to the watchlist after this many recorded deaths to them. Zero disables automatic watching.",
+        "Добавляет противника в список наблюдения после указанного числа записанных смертей от него. Ноль отключает автоматическое наблюдение." },
+    ["Sighting level help"] = { "Suppresses watched/general sighting alerts for sufficiently lower-level players. At -5, players at least five levels below you do not alert. Zero disables this filter. History and nearby-stealth warnings are retained.",
+        "Отключает обычные оповещения о встречах и оповещения об отслеживаемых игроках ниже указанного уровня. При -5 не оповещает об игроках на пять и более уровней ниже вас. Ноль отключает фильтр. История и предупреждения о скрытности рядом сохраняются." },
+    ["Shared alert outputs help"] = { "Used for watched-player sightings and observed nearby stealth. Combat-result chat messages have separate switches below.",
+        "Используется при обнаружении отслеживаемых игроков и видимом уходе в скрытность рядом. Для сообщений о результатах боя ниже есть отдельные переключатели." },
+    ["Alert sounds help"] = { "Plays a game sound for watched-player sightings and observed nearby stealth, not for every fight or stranger. Sighting alerts respect the interval, level filter and ignore list. Sounds are skipped on a taxi and use the game's audio settings.",
+        "Проигрывает звук игры при обнаружении отслеживаемого игрока и видимом уходе в скрытность рядом. Обычные бои и незнакомые игроки не озвучиваются. Оповещения о встречах учитывают интервал, уровень и игнор. На такси звуки пропускаются; громкость задается в настройках звука игры." },
+    ["Alternate alert sound help"] = { "Uses the alternate client sound for watched rogues/druids. Available when the client provides two distinct alert sounds.",
+        "Использует другой звук клиента для отслеживаемых разбойников и друидов. Доступно, если клиент предоставляет два разных звука оповещения." },
+    ["Sound preview help"] = { "Plays the normal alert sound once, even while recording or automatic sounds are disabled. Uses the game's current audio settings.",
+        "Один раз проигрывает обычный звук оповещения, даже если запись или автоматические звуки выключены. Использует текущие настройки звука игры." },
+    ["Zone summary help"] = { "Reports saved deaths and recent enemy observations after entering a zone. The summary is delayed briefly and skipped while airborne.",
+        "Сообщает о сохраненных смертях и недавних наблюдениях за противниками после входа в зону. Сводка появляется с небольшой задержкой и пропускается во время полета." },
+    ["Action chat help"] = { "Reports your Rivals watch/ignore actions. These messages can remain enabled while recording is paused.",
+        "Сообщает о ваших действиях со списками наблюдения и игнора Rivals. Эти сообщения могут работать при приостановленной записи." },
+    ["Map master help"] = { "Controls Rivals' own world-map and minimap pins. Per-type selections below are preserved when disabled.",
+        "Управляет собственными метками Rivals на карте мира и миникарте. При выключении выбор отдельных типов ниже сохраняется." },
+    ["Map sighting age help"] = { "Limits world-map sightings only. Recorded fight pins have separate switches.",
+        "Ограничивает возраст встреч на карте мира. Для меток записанных боев есть отдельные переключатели." },
+    ["Map fight pins help"] = { "Shows recorded fight locations. Red marks your deaths; green marks your confirmed killing blows. The two types can be selected separately below.",
+        "Показывает места записанных боев. Красный цвет обозначает ваши смерти, зеленый обозначает подтвержденные добивания. Ниже можно выбрать каждый тип отдельно." },
+    ["Minimap position help"] = { "Shows your position at the time you saw an enemy, not their current live position.",
+        "Показывает вашу позицию в момент наблюдения за противником, а не его текущее положение." },
+    ["Minimap edge help"] = { "Keeps watched-player blips at the minimap edge when their recorded position is outside its visible radius.",
+        "Оставляет метки отслеживаемых игроков на краю миникарты, когда записанная позиция находится за ее видимым радиусом." },
+    ["Minimap age help"] = { "Limits both sighting and death blips on the minimap.",
+        "Ограничивает возраст меток встреч и смертей на миникарте." },
+    ["TomTom help"] = { "Clicking a recorded coordinate also creates a TomTom waypoint when TomTom is installed. Opening the map still works without it.",
+        "Нажатие на записанные координаты также создает точку TomTom, если он установлен. Открытие карты работает и без него." },
+    ["last seen"] = { "Last seen", "Замечен" },
+    ["exactly"] = { "Coordinates", "Координаты" },
+    ["last fought"] = { "Last fight", "Последний бой" },
+    ["hit you in"] = { "Damage to you", "Урон по вам" },
+    ["times seen"] = { "Encounters", "Встреч" },
+    ["kills you most in"] = { "Kills you most in", "Чаще убивал" },
+    ["most damage"] = { "Most damage", "Лидер урона" },
+    ["Last sighting on map"] = { "Last sighting", "На карте" },
+    ["last duel"] = { "Last duel", "Последняя дуэль" },
+    ["fought in"] = { "Fought in", "Место дуэли" },
+    ["win rate"] = { "Win rate", "Доля побед" },
+    ["Where"] = { "Encounters", "Встречи" },
+    ["Between you"] = { "Between you", "Бои с вами" },
+    ["Statistics"] = { "Statistics", "Статистика" },
+    ["Card duel wins"] = { "Wins: |cff79d58b%d|r", "Победы: |cff79d58b%d|r" },
+    ["Card duel losses"] = { "Losses: |cffff8279%d|r", "Поражения: |cffff8279%d|r" },
+    ["Average duration"] = { "Average length", "Средняя длина" },
+    ["Longest duel"] = { "Longest duel", "Дольше всего" },
+    ["Match"] = { "Match", "Матч" },
+    ["Match state"] = { "Match state", "Статус матча" },
+    ["Match complete"] = { "Match complete", "Матч завершен" },
+    ["Left match"] = { "Left match", "Выход из матча" },
+    ["Current match"] = { "Current match", "Текущий матч" },
+    ["Battleground"] = { "Battleground", "Поле боя" },
+    ["Recorded fights"] = { "Recorded episodes", "Эпизодов" },
+    ["Match started"] = { "Match started", "Начало матча" },
+    ["Battleground card help"] = { "Recorded fight episodes involving this opponent in this match only. Separate episodes may belong to the same battle. Open-world fights and other matches are excluded.",
+        "Записанные эпизоды с этим противником только в выбранном матче. Несколько эпизодов могут относиться к одному бою. Другие матчи и открытый мир не учитываются." },
+    ["Battleground recap help"] = { "This player's damage in saved death recaps from this match. Full-fight damage-meter snapshots are excluded to avoid counting overlapping snapshots twice.",
+        "Урон этого игрока из сохраненных итогов ваших смертей в выбранном матче. Полные снимки измерителя боя не складываются с ним, чтобы не считать пересекающиеся данные дважды." },
+    ["Details"] = { "Details", "Подробности" },
+    ["Card deaths"] = { "|cffff8279%d|r killed you", "|cffff8279%d|r убил вас" },
+    ["Card kills"] = { "|cff79d58b%d|r you killed", "|cff79d58b%d|r вы убили" },
+    ["Duel score"] = { "|cff79d58b%d|r wins · |cffff8279%d|r losses", "|cff79d58b%d|r побед · |cffff8279%d|r поражений" },
+    ["Most sightings at"] = { "Seen most at", "Чаще замечен" },
+    ["Fight patterns"] = { "Fight patterns", "Манера боя" },
+    ["Watch help"] = { "Alerts you when you spot this player, using the chat, banner and sound options. Ignored players do not trigger these alerts.",
+        "Оповещает, когда вы замечаете игрока, через выбранные чат, плашку и звук. Для игроков в игноре эти оповещения отключены." },
+    ["Ignore help"] = { "Hides this player's nameplate marker, suppresses sighting alerts and removes them from the encounter strip. History and new encounter records are kept. Click again to stop ignoring. This is Rivals' own ignore list, separate from WoW chat blocking.",
+        "Скрывает метку на неймплейте, отключает оповещения о встречах и убирает игрока с панели встреч. История и запись новых встреч сохраняются. Повторное нажатие снимает игнор. Это список Rivals, отдельный от блокировки чата WoW." },
+    ["Copy player help"] = { "Opens all of this card's information as text for copying.",
+        "Открывает все сведения карточки в виде текста для копирования." },
+    ["Sighting hours help"] = { "The hour with the most recorded encounters, in the client's local time. Requires at least two encounters in that hour. Each encounter is counted once per repeat interval. Ties use the earlier hour. This does not track the player's online schedule.",
+        "Час с наибольшим числом записанных встреч по локальному времени клиента. Нужно минимум две встречи в этом часу. Повторные наблюдения внутри интервала считаются одной встречей. При равенстве выбран более ранний час. Данные не показывают расписание онлайна игрока." },
+    ["Fight patterns help"] = { "Playful descriptions inferred from your saved deaths with a high or medium confidence killer. The wording is stable for each player; the same fight pattern can have different descriptions.",
+        "Шутливые описания по вашим сохраненным смертям, где убийца определен с высокой или средней уверенностью. Формулировка закреплена за игроком: одна манера боя может иметь разные описания." },
+    ["Encounter count help"] = { "Recorded encounters, not the number of times the character logged in. Repeated nameplate, target and mouseover observations inside the repeat interval count once.",
+        "Количество записанных встреч, а не входов персонажа в игру. Повторные наблюдения через неймплейт, цель и наведение внутри заданного интервала считаются одной встречей." },
+    ["Sighting position help"] = { "Your position when the player was last observed, not their live location. Clicking opens the map. TomTom also receives a waypoint when enabled and available.",
+        "Ваша позиция в момент последнего наблюдения, а не текущее положение противника. Нажатие открывает карту. При включенной интеграции и наличии TomTom также создается точка маршрута." },
+    ["Sighting source help"] = { "How the last observation was recorded: an enemy nameplate, your target or mouseover.",
+        "Как записано последнее наблюдение: через неймплейт противника, выбранную цель или наведение мыши." },
+    ["Recap damage help"] = { "Damage attributed to this player in your saved death recaps, and how many of your deaths include that damage. It is separate from full-fight damage-meter totals.",
+        "Урон этого игрока из сохраненных итогов ваших смертей и число смертей с таким уроном. Он учитывается отдельно от полного урона за бой из измерителя." },
+    ["Most damage help"] = { "How many of your saved death recaps list this player first by damage. This does not mean they landed the killing blow.",
+        "В скольких сохраненных итогах ваших смертей игрок стоит первым по урону. Это не означает, что он нанес добивающий удар." },
+    ["Unknown duel results help"] = { "Duels whose outcome could not be read. They are excluded from the win-rate calculation.",
+        "Дуэли, исход которых не удалось прочитать. Они не входят в расчет процента побед." },
+    ["Recording help"] = { "Pauses PvP recording and notifications. Saved history stays available. The settings below are preserved while recording is paused.",
+        "При выключении приостанавливает запись PvP и оповещения. Сохраненная история остается доступной. Значения настроек ниже сохраняются." },
+    ["Encounters help"] = { "Keeps opponent observations from the enabled detection sources. These observations fill player cards, encounter counts and sighting hours.",
+        "Сохраняет наблюдения за противниками из включенных источников. Из них заполняются карточки, счетчик встреч и часы наблюдений." },
+    ["World fights help"] = { "Records world PvP kills, deaths and readable fights without a death. Nonlethal fights require player damage in the built-in damage meter's Damage Taken view.",
+        "Записывает добивания, смерти и доступные бои в мире без смерти. Для записи боя без смерти нужен урон от игрока в разделе «Полученный урон» встроенного измерителя." },
+    ["Repeat encounter help"] = { "Observing the same player again within this interval updates their last seen position, but does not add another encounter or hourly count.",
+        "Повторное наблюдение за тем же игроком внутри интервала обновляет последнюю позицию, но не увеличивает счетчик встреч и статистику по часам." },
+    ["Alert interval help"] = { "Minimum time between watched-player alerts. Independent of the repeat encounter interval.",
+        "Минимальная пауза между оповещениями об игроке из списка наблюдения. Работает отдельно от интервала записи повторных встреч." },
+    ["Stealth alert help"] = { "Warns when Rivals can observe a nearby player entering stealth. It cannot detect a player already hidden from the client.",
+        "Предупреждает, если Rivals видит, как игрок рядом уходит в скрытность. Уже скрытого от клиента игрока обнаружить нельзя." },
+    ["Unit tooltip help"] = { "Adds available Rivals encounter and fight information to player tooltips.",
+        "Добавляет доступные сведения Rivals о встречах и боях в подсказки игроков." },
+    ["Appearance help"] = { "Opens the shared Sintezza Theme settings for colors, fonts, textures and interface language.",
+        "Открывает общие настройки Sintezza Theme: цвета, шрифты, текстуры и язык интерфейса." },
+    ["Lone wolf rule"] = { "At least two of your deaths; no more than one observed attacker in at least two thirds of them.",
+        "Минимум две ваши смерти. Не больше одного замеченного нападавшего хотя бы в двух третях этих смертей." },
+    ["Pack hunter rule"] = { "At least two of your deaths; at least three observed attackers in at least two thirds of them.",
+        "Минимум две ваши смерти. Хотя бы в двух третях из них замечено не меньше трех нападавших." },
+    ["Lowbie farmer rule"] = { "Killed you at least twice while being at least ten levels above you.",
+        "Убил вас минимум дважды, будучи выше вас хотя бы на десять уровней." },
+    ["Camper rule"] = { "Killed you at least three times within one hour.", "Убил вас минимум три раза за один час." },
+    ["Giant slayer rule"] = { "Killed you at least once while being at least five levels below you.",
+        "Убил вас хотя бы раз, будучи ниже вас минимум на пять уровней." },
+}
+for key, translations in pairs(cardText) do
+    ru[key] = translations[2]
+    if root.locale ~= "ruRU" then ns.LOCALE[key] = translations[1] end
+end
+
+ru["One-person problem"] = "Один в поле вредитель"
+ru["Solo trouble"] = "Неприятности в одного"
+ru["No backup needed"] = "Без группы поддержки"
+ru["Party of one"] = "Сам себе рейд"
+ru["Uninvited duel"] = "Дуэль без приглашения"
+ru["Brought friends"] = "Привел друзей"
+ru["Solo, with backup"] = "Соло с подстраховкой"
+ru["Full party service"] = "Доставка всей группой"
+ru["Group project"] = "Коллективная работа"
+ru["Strength in numbers"] = "Берет количеством"
+ru["Sandbox champion"] = "Герой песочницы"
+ru["Picks on the little guy"] = "Нашел кого поменьше"
+ru["Grey-name collector"] = "Коллекционер серых ников"
+ru["Training dummy enthusiast"] = "Репетирует на новичках"
+ru["Low-level specialist"] = "Специалист по младшим"
+ru["Frequent visitor"] = "Постоянный клиент"
+ru["Reserved this spot"] = "Занял тут место"
+ru["Same time, same place"] = "На том же месте"
+ru["Not done yet"] = "Еще не договорил"
+ru["Knows the way back"] = "Дорогу уже знает"
+ru["Size does not matter"] = "Размер не решает"
+ru["Punches above their level"] = "Бьет выше своего уровня"
+ru["Level is just a number"] = "Уровень не аргумент"
+ru["Took the uphill fight"] = "Выбрал цель повыше"
+ru["Found the weak spot"] = "Нашел слабое место"
 ru["BLOCKED func=%s on item=%s, skipped from now on"] = "Заблокировано: %s, запись %s. Повтор отключен."
 ru["context=%s zone=%s%s mapID=%s"] = "Контекст %s · Зона %s%s · ID карты %s"
 ru["build=%s %s interface=%s addon=%s"] = "Клиент %s %s · Интерфейс %s · Аддон %s"

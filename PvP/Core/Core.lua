@@ -3,8 +3,9 @@ local ADDON, root = ...
 local ns = root.PvP
 _G.Sintezza_RivalsPvP = ns
 
-ns.version = "1.14.0"
+ns.version = "1.15.0"
 ns.modules = ns.modules or {}
+ns.SIGHTING_LIMIT = 1000
 ns.WindowAppearance = Sintezza_Theme:NewWindowPreferences(function()
 	local db = Sintezza_RivalsPvPDB
 	return db and db.settings and db.settings.ui

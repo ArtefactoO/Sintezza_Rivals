@@ -41,6 +41,7 @@ local function FillData()
 end
 
 local results = X.TABS[X.tabIndex("Stats")]
+results.hint = ""
 local overview = { cols = results.cols, note = results.note, hint = results.hint, fill = FillResults }
 local records = {
 	cols = { { Text("Записи", "Records"), 245, "LEFT" }, { Text("Количество", "Count"), 130, "RIGHT" } },

@@ -16,6 +16,7 @@ local TEMPLATE = "Sintezza_RivalsPvPPinTemplate"
 
 local rgb = ns.ClassRGB
 local ago = ns.Ago
+local widgets = Sintezza_Theme:CreateWidgets(root.Theme)
 local L = ns.L
 
 -- for timers and hooks: Guard with arguments would build a closure per call
@@ -127,40 +128,39 @@ local function style(p, w)
 end
 
 local function fightTooltip(fights)
-	local kills, deaths = 0, 0
+	local kills, deaths, lines = 0, 0, {}
 	for _, fight in ipairs(fights) do
 		if fight.win then kills = kills + 1 else deaths = deaths + 1 end
 	end
-	if kills > 0 then GameTooltip:AddLine(root.Text("Добивания: %d", "Kills: %d"):format(kills), .56, 1, .70) end
-	if deaths > 0 then GameTooltip:AddLine(root.Text("Смерти: %d", "Deaths: %d"):format(deaths), 1, .56, .49) end
+	if kills > 0 then lines[#lines + 1] = root.Text("Добивания: %d", "Kills: %d"):format(kills) end
+	if deaths > 0 then lines[#lines + 1] = root.Text("Смерти: %d", "Deaths: %d"):format(deaths) end
 	for i = 1, math.min(8, #fights) do
 		local fight = fights[i]
 		local name = fight.who and (fight.who.name or fight.who.guid) or L("unknown")
 		local label = fight.win and root.Text("Ты убил: %s", "You killed: %s")
 			or root.Text("Тебя убили: %s", "Killed by: %s")
-		GameTooltip:AddDoubleLine(label:format(name), ago(fight.time), .92, .92, .92, .76, .76, .76)
+		lines[#lines + 1] = label:format(name) .. "  " .. ago(fight.time)
 	end
-	if #fights > 8 then GameTooltip:AddLine(root.Text("Еще записей: %d", "More records: %d"):format(#fights - 8)) end
+	if #fights > 8 then lines[#lines + 1] = root.Text("Еще записей: %d", "More records: %d"):format(#fights - 8) end
+	return table.concat(lines, "\n")
 end
 
 -- built on hover, never on update, so a refresh formats nothing per pin
 local function tooltip(self)
 	local rec, kind = self.rec, self.kind
 	if not rec and not self.fights then return end
-	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-	GameTooltip:ClearLines()
+	local title, body
 	if self.fights then
-		fightTooltip(self.fights)
+		title, body = root.Text("Бои PvP", "PvP fights"), fightTooltip(self.fights)
 	elseif kind == "sighting" or kind == "trail" then
-		GameTooltip:AddLine((rec.name or "?") .. (self.watched and ("  |cffffd100[" .. L("WATCHED") .. "]|r") or ""), 1, 0.82, 0)
+		title = (rec.name or "?") .. (self.watched and ("  |cffffd100[" .. L("WATCHED") .. "]|r") or "")
 		local class = root.ClassName(rec.class)
-		GameTooltip:AddLine(L("%s %s, level %s"):format(tostring(rec.raceName or rec.race or ""),
-			tostring(class or ""), tostring(rec.level or "?")), 0.9, 0.9, 0.9)
-		GameTooltip:AddLine(L("%s, %s ago, seen %dx"):format(rec.lastSubZone or rec.lastZone or "?",
-			ago(rec.lastSeen), rec.count or 1), 0.9, 0.9, 0.9)
-		if kind == "trail" then GameTooltip:AddLine(L("an earlier spot on their route"), 0.7, 0.7, 0.7) end
+		body = L("%s %s, level %s"):format(tostring(rec.raceName or rec.race or ""),
+			tostring(class or ""), tostring(rec.level or "?")) .. "\n" ..
+			L("%s, %s ago, seen %dx"):format(rec.lastSubZone or rec.lastZone or "?", ago(rec.lastSeen), rec.count or 1)
+		if kind == "trail" then body = body .. "\n" .. L("an earlier spot on their route") end
 	end
-	GameTooltip:Show()
+	if title then widgets:Tooltip(self, title, body, "cursor") end
 end
 
 ----------------------------------------------------------------- where a record lands
@@ -335,7 +335,7 @@ function Sintezza_RivalsPvPPinMixin:OnAcquired(w)
 end
 
 function Sintezza_RivalsPvPPinMixin:OnMouseEnter() tooltip(self) end
-function Sintezza_RivalsPvPPinMixin:OnMouseLeave() GameTooltip:Hide() end
+function Sintezza_RivalsPvPPinMixin:OnMouseLeave() Sintezza_Theme:HideTooltip(self) end
 function Sintezza_RivalsPvPPinMixin:ShouldMouseButtonBePassthrough()
 	return true
 end
@@ -380,7 +380,8 @@ local function getPin(i)
 	M.Dress(p)
 	p:EnableMouse(true)
 	p:SetScript("OnEnter", tooltip)
-	p:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	p:SetScript("OnLeave", function(self) Sintezza_Theme:HideTooltip(self) end)
+	p:HookScript("OnHide", function(self) Sintezza_Theme:HideTooltip(self) end)
 	if p.SetMouseClickEnabled then p:SetMouseClickEnabled(false) end
 	pins[i] = p
 	return p
@@ -441,11 +442,8 @@ function M:SetFightPinsShown(shown)
 end
 
 local function fightButtonTooltip(owner)
-	GameTooltip:SetOwner(owner, "ANCHOR_LEFT")
-	GameTooltip:ClearLines()
-	GameTooltip:AddLine(Sintezza_RivalsPvPDB.settings.map.enabled and Text("Скрыть точки PvP", "Hide PvP markers")
-		or Text("Показать точки PvP", "Show PvP markers"))
-	GameTooltip:Show()
+	widgets:Tooltip(owner, "", Sintezza_RivalsPvPDB.settings.map.enabled and Text("Скрыть точки PvP", "Hide PvP markers")
+		or Text("Показать точки PvP", "Show PvP markers"), "cursor")
 end
 
 local function attachButton(map)
@@ -453,12 +451,13 @@ local function attachButton(map)
 	if not button then
 		button = root.Theme:CreateMapIconButton(map, swords, function(owner)
 			M:SetFightPinsShown(not Sintezza_RivalsPvPDB.settings.map.enabled)
-			if GameTooltip:IsOwned(owner) then fightButtonTooltip(owner) end
+			if owner:IsMouseOver() then fightButtonTooltip(owner) end
 		end)
 		button:HookScript("OnEnter", fightButtonTooltip)
 		button:HookScript("OnLeave", function(owner)
-			if GameTooltip:IsOwned(owner) then GameTooltip:Hide() end
+			Sintezza_Theme:HideTooltip(owner)
 		end)
+		button:HookScript("OnHide", function(owner) Sintezza_Theme:HideTooltip(owner) end)
 		map:HookScript("OnShow", queueUpdate)
 	end
 
@@ -502,6 +501,7 @@ function M:TryInit()
 end
 
 function M:Update()
+    if root.PerfBridge then root.PerfBridge.Count("map_update") end
 	if not WorldMapFrame or not WorldMapFrame:IsShown() then return end
 	self:TryInit()
 	local enabled = Sintezza_RivalsPvPDB.settings.map.enabled

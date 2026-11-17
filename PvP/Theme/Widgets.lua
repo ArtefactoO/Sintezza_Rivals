@@ -10,51 +10,39 @@ local ns = root.PvP
 
 local Theme = ns.Theme
 local C, L = Theme.C, Theme.L
+local widgets = Sintezza_Theme:CreateWidgets(root.Theme)
 
 --------------------------------------------------------------------- widgets
 function Theme.Button(parent, text, width, onClick, tipText)
-    local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    local button = widgets:Button(parent, L(text), onClick)
     button:SetSize(width or 90, 26)
-    button.label = Theme.Font(button, 12, C.fg)
-    button.label:SetPoint("CENTER")
-    button.label:SetText(L(text))
-    root.Theme:SkinButton(button, button.label, 12)
-    if onClick then button:SetScript("OnClick", onClick) end
+    button.label = button.text
     if tipText then Theme.Tip(button, L(text), L(tipText), "ANCHOR_TOP") end
     return button
 end
 
 function Theme.SearchBox(parent, width, onChange, placeholder)
-	local box = CreateFrame("EditBox", nil, parent, "BackdropTemplate")
+	local box = widgets:EditBox(parent, placeholder and Theme.L(placeholder) or "", function() end)
 	box:SetSize(width or 200, 24)
-	box:SetAutoFocus(false)
 	box:SetTextInsets(8, 24, 0, 0)
-	root.Theme:SkinInput(box, 12)
-	local hint = Theme.Font(box, 12, C.dim)
+	local hint = box.placeholder
+	hint:ClearAllPoints()
 	hint:SetPoint("LEFT", 8, 0)
 	hint:SetText(placeholder and Theme.L(placeholder) or "")
 
-	-- a clear button, because backspacing a search box is nobody's idea of fun
-	local clear = CreateFrame("Button", nil, box)
+	local clear = widgets:CloseButton(box, function() box:SetText(""); box:ClearFocus() end, nil, true)
 	clear:SetSize(18, 18)
 	clear:SetPoint("RIGHT", -3, 0)
-	local cx = Theme.Cross(clear, 12)
-	cx:SetPoint("CENTER")
-	clear:SetScript("OnEnter", function() cx:SetVertexColor(C.fg[1], C.fg[2], C.fg[3]) end)
-	clear:SetScript("OnLeave", function() cx:SetVertexColor(C.muted[1], C.muted[2], C.muted[3]) end)
-	clear:SetScript("OnClick", function()
-		box:SetText("")
-		box:ClearFocus()
-	end)
 	clear:Hide()
 
-	box:SetScript("OnTextChanged", function(self)
+	box:HookScript("OnTextChanged", function(self)
 		local empty = self:GetText() == ""
 		hint:SetShown(empty)
 		clear:SetShown(not empty)
 		if onChange then onChange(self) end
 	end)
 	box:SetScript("OnEscapePressed", function(self) self:SetText(""); self:ClearFocus() end)
+	box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 	box.clearButton = clear
 	box.hint = hint
 	-- the placeholder says what this particular list can be searched by, so it

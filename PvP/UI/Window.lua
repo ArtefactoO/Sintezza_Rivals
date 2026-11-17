@@ -10,6 +10,7 @@ local ns = root.PvP
 local U, X = ns.UI, ns.UIX
 local T, TC = ns.Theme, ns.Theme.C
 local data, ROW_H = X.data, X.ROW_H
+local widgets = Sintezza_Theme:CreateWidgets(root.Theme)
 
 local frame, nav
 local tabPanels = {}
@@ -133,8 +134,7 @@ function U:SelectTab(i)
 			panel = CreateFrame("Frame", nil, frame.page)
 			panel:Hide()
 			panel:SetPoint("TOPLEFT", 0, -52)
-			panel:SetPoint("BOTTOMLEFT", frame.page, "BOTTOMLEFT", 0, 8)
-			panel:SetWidth(668)
+			panel:SetPoint("BOTTOMRIGHT", frame.page, "BOTTOMRIGHT", 0, 8)
 			tab.build(panel)
 			tabPanels[tab] = panel
 		end
@@ -203,7 +203,6 @@ local function build()
 		minW = minW, minH = minH, key = ui, resizable = true,
 		windowAppearance = ns.WindowAppearance,
 		title = "Sintezza Rivals", addonName = "Sintezza_Rivals",
-		subtitle = "open-world intel: who is out there, who keeps killing you, and where",
 	})
 
 	local content = frame.content
@@ -215,9 +214,9 @@ local function build()
 	end
 	nav = T.Nav(content, navEntries, function(i) U:SelectTab(i) end)
 
-	local options = T.Button(nav, "Options", T.NAV_W - 20, function() ns.Options:Open() end)
-	options:SetPoint("BOTTOMLEFT", nav, "BOTTOMLEFT", 10, 10)
-	options:SetPoint("BOTTOMRIGHT", nav, "BOTTOMRIGHT", -10, 10)
+	local settings = widgets:Button(frame.header, T.L("Settings"), function() ns.Options:Open() end)
+	settings:SetWidth(100)
+	settings:SetPoint("RIGHT", frame.closeButton, "LEFT", -4, 0)
 	-- page area
 	local page = CreateFrame("Frame", nil, content)
 	page:SetPoint("TOPLEFT", nav, "TOPRIGHT", 0, 0)

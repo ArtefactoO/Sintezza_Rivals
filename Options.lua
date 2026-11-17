@@ -16,18 +16,15 @@ local function Label(parent, value, size, color, outline)
 end
 
 local function Button(parent, title, width, callback)
-    local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    local button = widgets:Button(parent, title, callback)
     button:SetSize(width, 30)
-    button.label = Label(button, title, 13, T.text)
-    button.label:SetPoint("CENTER")
-    T:SkinButton(button, button.label, 13)
+    button.label = button.text
     function button:Refresh() T:PaintButton(self, self.selected == true) end
-    button:SetScript("OnClick", callback)
     button:Refresh()
     return button
 end
 
-local kinds = { "killer", "attacker", "defeated", "manual" }
+local kinds = { "killer", "attacker", "defeated" }
 local markerPanels = setmetatable({}, { __mode = "k" })
 local journal, journalOffset = nil, 0
 local historyTitle = Text("История PvP", "PvP history")
@@ -86,146 +83,101 @@ function ns.RefreshOptions()
     for panel in pairs(markerPanels) do panel:RefreshMarkers() end
 end
 
-local function OpenColor(owner, kind, style)
-    local stock = style == "swords" or style == "skull"
-    local original
-    if stock then original = ns.MarkerLayout(kind).iconColor else original = ns.db.colors[kind] end
-    local r, g, b = unpack(stock and (original or { 1, 1, 1 }) or ns.Color(kind))
-    local function Apply(color)
-        if stock then
-            ns.SetMarkerLayout(kind, "iconColor", color)
-        else
-            ns.db.colors[kind] = color
-            ns.Changed()
-        end
-    end
-    widgets:OpenColorPicker(owner, { r = r, g = g, b = b }, false, function(color)
-        Apply({ color.r, color.g, color.b })
-    end, function() Apply(original) end)
-end
-
-local function ThresholdInput(parent, get, set, showError)
-    local edit = CreateFrame("EditBox", nil, parent, "BackdropTemplate")
-    edit:SetSize(57, 22)
-    edit:SetAutoFocus(false)
-    edit:SetNumeric(true)
-    edit:SetMaxLetters(3)
-    edit:SetJustifyH("CENTER")
-    T:SkinInput(edit, 11)
-    widgets:EnableSettingsTab(edit)
-    function edit:Refresh()
-        if not self:HasFocus() then self:SetNumber(get()) end
-    end
-    edit:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-    edit:SetScript("OnTextChanged", function(self, user)
-        if not user then return end
-        local accepted = set(tonumber(self:GetText()))
-        showError(not accepted)
-        self:SetBackdropBorderColor(unpack(accepted and T.accentLine or T.danger))
-    end)
-    edit:HookScript("OnEditFocusLost", function(self)
-        self:Refresh()
-        showError(false)
-    end)
-    edit:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
-    edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-    return edit
-end
-
-local function MarkerSection(parent, title, rightInset)
-    local section = widgets:Section(parent, title, nil, "settings")
-    section:SetPoint("TOPLEFT")
-    section:SetPoint("TOPRIGHT", -rightInset, 0)
-    section:SetHeight(section.headerHeight)
-    return section
-end
-
-local function BuildThresholdPanel(frame, preview, controls, getKind)
+local function BuildThresholdPanel(frame, getKind)
     local rules = CreateFrame("Frame", nil, frame)
-    rules:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -12)
-    rules:SetPoint("TOPRIGHT", controls, "BOTTOMRIGHT", 0, -12)
-    local heading = MarkerSection(rules, Text("Масштаб по убийствам", "Scale by kills"), 130)
-    if widgets.Help then
-        widgets:Help(heading, Text(
-            "Увеличивает метку по заданным порогам. Действует прибавка с самого высокого достигнутого порога.",
-            "Increases the marker size at configured thresholds. The highest reached threshold supplies the bonus."), heading.title)
-    end
+    local heading = widgets:Section(rules, "", nil, "settings")
+    heading:SetPoint("TOPLEFT")
+    heading:SetHeight(heading.headerHeight)
+    heading.title:SetWordWrap(false)
     local toggle = widgets:Toggle(rules, Text("Включить", "Enable"),
         function() return ns.MarkerScaling(getKind()).enabled end,
         function(value) ns.SetMarkerScaling(getKind(), "enabled", value) end)
-    toggle:SetSize(108, 25)
-    toggle:SetPoint("TOPRIGHT", -11, -5)
-
-    local tableFrame = CreateFrame("Frame", nil, rules)
-    tableFrame:SetAllPoints()
-    Label(tableFrame, Text("Прибавка к базовому размеру", "Bonus to base size"), 11, T.muted):SetPoint("TOPLEFT", 12, -39)
-    local counts = { { 3, Text("3 порога", "3 thresholds") }, { 4, Text("4 порога", "4 thresholds") } }
-    local countButton = Button(tableFrame, "", 115, function(owner)
-        Select(owner, counts, ns.MarkerScaling(getKind()).count,
-            function(value) ns.SetMarkerScaling(getKind(), "count", value) end)
-    end)
-    T:DropdownArrow(countButton, countButton.label)
-    countButton:SetHeight(24)
-    countButton:SetPoint("TOPRIGHT", -11, -31)
-    local heads = Frame(tableFrame, T.bg, T.lineSoft)
-    heads:SetPoint("TOPLEFT", 12, -60)
-    heads:SetPoint("TOPRIGHT", -12, -60)
-    heads:SetHeight(20)
-    Label(heads, Text("От убийств", "Kills required"), 11, T.muted):SetPoint("LEFT", 8, 0)
-    Label(heads, Text("Прибавка", "Bonus"), 11, T.muted):SetPoint("CENTER")
-    Label(heads, Text("Размер", "Size"), 11, T.muted):SetPoint("RIGHT", -8, 0)
-    local errorText = Label(tableFrame, Text("Пороги должны расти. Прибавка от 0 до 200%.",
-        "Use increasing thresholds and a bonus from 0 to 200%."), 11, T.danger)
-    errorText:SetPoint("BOTTOMLEFT", 12, 9)
-    errorText:Hide()
-    local function ShowError(shown)
-        errorText:SetShown(shown)
-    end
-    local unavailable = Label(rules, "", 11, T.muted)
-    unavailable:SetPoint("TOPLEFT", 12, -39)
-
-    local rows = {}
+    toggle:SetSize(104, 25)
+    toggle:SetPoint("TOPRIGHT", 0, -2)
+    local count = widgets:ChoiceRow(rules, Text("Порогов", "Thresholds"), { [3] = "3", [4] = "4" },
+        function() return ns.MarkerScaling(getKind()).count end,
+        function(value) ns.SetMarkerScaling(getKind(), "count", value) end, { [3] = 1, [4] = 2 })
+    count:SetSize(150, 28)
+    count.button:SetWidth(64)
+    local unavailable = widgets:Label(rules,
+        Text("Прибавки работают только с метками-иконками.", "Size bonuses apply to icon markers."), 11, T.muted)
+    unavailable:SetPoint("TOPLEFT", 0, -32)
+    unavailable:SetPoint("TOPRIGHT", 0, -32)
+    unavailable:SetWordWrap(true)
+    local rows, available = {}, false
     for index = 1, 4 do
-        local row = CreateFrame("Frame", nil, tableFrame)
-        local y = -82 - (index - 1) * 26
-        row:SetPoint("TOPLEFT", 12, y)
-        row:SetPoint("TOPRIGHT", -12, y)
-        row:SetHeight(24)
-        row.highlight = row:CreateTexture(nil, "BACKGROUND")
-        row.highlight:SetAllPoints()
-        row.highlight:SetColorTexture(unpack(T.selection))
-        local function Input(field)
-            return ThresholdInput(row, function() return ns.MarkerScaling(getKind()).tiers[index][field] end,
-                function(value) return ns.SetMarkerThreshold(getKind(), index, field, value) end, ShowError)
-        end
-        row.kills = Input("kills")
-        row.kills:SetPoint("LEFT", 8, 0)
-        row.bonus = Input("bonus")
-        row.bonus:SetPoint("CENTER", -3, 0)
-        Label(row, "%", 11, T.muted):SetPoint("LEFT", row.bonus, "RIGHT", 4, 0)
-        row.total = Label(row, "", 12, T.brass)
-        row.total:SetPoint("RIGHT", -8, 0)
-        rows[index] = row
+        local tierIndex = index
+        local threshold = widgets:SliderRow(rules, Text("Порог %d", "Threshold %d"):format(index), 1, 999, 1,
+            function() return ns.MarkerScaling(getKind()).tiers[tierIndex].kills end,
+            function(value) ns.SetMarkerThreshold(getKind(), tierIndex, "kills", value) end)
+        local bonus = widgets:SliderRow(rules, Text("Прибавка", "Bonus"), 0, 200, 1,
+            function() return ns.MarkerScaling(getKind()).tiers[tierIndex].bonus end,
+            function(value) ns.SetMarkerThreshold(getKind(), tierIndex, "bonus", value) end, "%")
+        rows[index] = { threshold = threshold, bonus = bonus }
     end
-
-    function rules:Refresh(kind, style, base, active)
-        local available = ns.MarkerScalingAvailable(kind, style)
-        local scaling = ns.MarkerScaling(kind)
-        toggle:SetShown(available)
-        if available then toggle:Refresh(false) end
-        unavailable:SetShown(not available)
-        unavailable:SetText((kind == "killer" or kind == "defeated") and
-            Text("Для масштабирования выбери метку-иконку.", "Choose an icon to use scaling.")
-            or Text("У этой категории фиксированный размер.", "This category uses a fixed size."))
-        tableFrame:SetShown(available)
-        rules:SetHeight(available and (scaling.count == 4 and 205 or 179) or 61)
-        countButton.label:SetText(ChoiceLabel(counts, scaling.count))
+    function rules:LayoutColumns(width)
+        local paired = width >= 580
+        heading:SetPoint("TOPRIGHT", paired and -278 or -116, 0)
+        heading:LayoutTitleRule()
+        count:ClearAllPoints()
+        if paired then count:SetPoint("TOPRIGHT", toggle, "TOPLEFT", -12, 0)
+        else count:SetPoint("TOPLEFT", 0, -30) end
+        local y = paired and 32 or 62
+        unavailable:ClearAllPoints()
+        unavailable:SetPoint("TOPLEFT", 0, -y)
+        unavailable:SetPoint("TOPRIGHT", 0, -y)
+        if not available then y = y + 24 end
+        local columnWidth = paired and (width - 18) / 2 or width
         for index, row in ipairs(rows) do
-            row:SetShown(index <= scaling.count)
-            row.highlight:SetShown(index == active)
-            row.kills:Refresh()
+            if index <= ns.MarkerScaling(getKind()).count then
+                row.threshold:ClearAllPoints()
+                row.bonus:ClearAllPoints()
+                row.threshold:SetPoint("TOPLEFT", self, "TOPLEFT", 0, -y)
+                row.threshold:SetWidth(columnWidth)
+                row.bonus:SetPoint("TOPLEFT", self, "TOPLEFT", paired and columnWidth + 18 or 0,
+                    -(paired and y or y + row.threshold:GetHeight() + 2))
+                row.bonus:SetWidth(columnWidth)
+                y = y + (paired and math.max(row.threshold:GetHeight(), row.bonus:GetHeight())
+                    or row.threshold:GetHeight() + row.bonus:GetHeight() + 2) + 2
+            end
+        end
+        self:SetHeight(y + 4)
+    end
+    function rules:Refresh(kind, style, base)
+        available = ns.MarkerScalingAvailable(kind, style)
+        local scaling = ns.MarkerScaling(kind)
+        local metric = kind == "attacker" and Text("Масштаб по эпизодам урона", "Scale by damage episodes")
+            or kind == "defeated" and Text("Масштаб по добиваниям", "Scale by kills")
+            or Text("Масштаб по смертям", "Scale by deaths")
+        heading.title:SetText(metric)
+        local help = Text("Применяется прибавка самого высокого достигнутого порога. Прибавки не складываются.",
+            "The highest reached threshold supplies the bonus. Bonuses do not stack.")
+        help = help .. "\n\n" .. Text("При редактировании соседние значения изменяются только для сохранения порядка: пороги растут, прибавки не уменьшаются. Точное значение можно ввести в поле справа.",
+            "Edits adjust neighboring values only to preserve order: thresholds increase and bonuses never decrease. Enter an exact value in the field on the right.")
+        if kind == "attacker" then
+            help = help .. "\n\n" .. Text("Счетчик: сохраненные эпизоды, где игрок нанес вам урон. Сводка смерти и полный снимок одного боя считаются одним эпизодом, если у них есть общий идентификатор боя.",
+                "Counts saved episodes where this player damaged you. A death recap and full snapshot count once when they share a combat identifier.")
+        elseif kind == "defeated" then
+            help = help .. "\n\n" .. Text("Счетчик: ваши подтвержденные добивания этого игрока.",
+                "Counts your confirmed killing blows against this player.")
+        else
+            help = help .. "\n\n" .. Text("Счетчик: сколько раз этот игрок убил вас.",
+                "Counts how often this player killed you.")
+        end
+        widgets:Help(heading, help, heading.title)
+        toggle:Show()
+        count:Show()
+        unavailable:SetShown(not available)
+        toggle:Refresh(false)
+        count:Refresh()
+        for index, row in ipairs(rows) do
+            local shown = index <= scaling.count
+            row.threshold:SetShown(shown)
+            row.bonus:SetShown(shown)
+            row.bonus.labelText = Text("Прибавка · итог %.0f%%", "Bonus · final %.0f%%"):format(base * (1 + scaling.tiers[index].bonus / 100))
+            row.bonus.label:SetText(row.bonus.labelText)
+            row.threshold:Refresh()
             row.bonus:Refresh()
-            row.total:SetText(("%.0f%%"):format(base * (1 + scaling.tiers[index].bonus / 100)))
         end
     end
     return rules
@@ -233,147 +185,208 @@ end
 
 function ns.BuildMarkerControls(frame, top)
     local kind = kinds[1]
-    local categories = {}
-    for index, key in ipairs(kinds) do categories[index] = { key, ns.Kinds[key].label } end
+    local labels = { Text("Убийцы", "Killers"), Text("Нападавшие", "Attackers"),
+        Text("Побежденные", "Defeated") }
     local color
-    local category = Button(frame, "", 280, function(owner)
-        Select(owner, categories, kind, function(value)
-            widgets:CloseColorPicker(color)
-            kind = value
-            frame:RefreshMarkers()
-        end)
-    end)
-    T:DropdownArrow(category, category.label)
+    local category = widgets:Segmented(frame, labels, kinds, function() return kind end, function(value)
+        if color then widgets:CloseColorPicker(color) end
+        kind = value
+        frame:RefreshMarkers()
+    end, true)
     category:SetPoint("TOPLEFT", 16, top)
+    category:SetPoint("TOPRIGHT", -16, top)
 
-    local preview = CreateFrame("Frame", nil, frame)
-    preview:SetSize(284, 194)
-    preview:SetPoint("TOPLEFT", category, "BOTTOMLEFT", 0, -8)
-    MarkerSection(preview, Text("Предпросмотр", "Preview"), 130)
-    local previewSource = Label(preview, "", 10, T.dim)
-    previewSource:SetPoint("TOPRIGHT", -12, -7)
-    previewSource:SetWidth(112)
-    previewSource:SetJustifyH("RIGHT")
-    previewSource:SetWordWrap(false)
-    local stage = Frame(preview, T.bg, T.lineSoft)
-    stage:SetPoint("TOPLEFT", 11, -31)
-    stage:SetPoint("TOPRIGHT", -11, -31)
-    stage:SetHeight(71)
+    local controls = widgets:Section(frame, Text("Оформление метки", "Marker appearance"), nil, "settings")
+    local preview = widgets:Section(frame, Text("Предпросмотр", "Preview"), nil, "settings")
+    local ui = ns.PvP and Sintezza_RivalsPvPDB.settings.ui
+    local enabled = widgets:Toggle(controls, Text("Показывать метки", "Show markers"),
+        function() return not ui or ui.showMarkers ~= false end, function(value)
+            if ui then ui.showMarkers = value; ns.Changed() end
+        end)
+    enabled:SetSize(190, 25)
+    enabled:SetPoint("TOPRIGHT", 0, -1)
+    local layoutControlsRule = controls.LayoutTitleRule
+    function controls:LayoutTitleRule(width)
+        layoutControlsRule(self, (width or self:GetWidth()) - enabled:GetWidth() - 12)
+    end
+    widgets:Help(enabled, Text("Общий переключатель всех меток Rivals на неймплейтах. Не меняет выбранное оформление категорий.",
+        "Controls all Rivals nameplate markers. Preserves each category's appearance."))
+
+    local rows = {}
+    local function Add(row, help)
+        row.markerVisible = true
+        rows[#rows + 1] = row
+        if help then widgets:Help(row, help) end
+        return row
+    end
+    local styles, order = {}, {}
+    for index, entry in ipairs(ns.MarkChoices) do styles[entry[1]], order[entry[1]] = entry[2], index end
+    Add(widgets:ChoiceRow(controls, Text("Метка", "Marker"), styles, function() return ns.MarkStyle(kind) end,
+        function(value) widgets:CloseColorPicker(color); ns.db.marks[kind] = value; ns.Changed() end, order),
+        Text("Иконки можно перемещать относительно полосы. Окантовка выделяет полосу здоровья, цвет имени меняет поддерживаемый текст имени.",
+            "Icons can be positioned around the bar. Border outlines the health bar; Name color recolors supported name text."))
+    color = Add(widgets:ColorRow(controls, Text("Цвет", "Color"), function()
+        local current = ns.MarkStyle(kind)
+        local stock = current == "swords" or current == "skull"
+        return stock and (ns.MarkerLayout(kind).iconColor or { 1, 1, 1 }) or ns.Color(kind)
+    end, function(r, g, b)
+        local current = ns.MarkStyle(kind)
+        if current == "swords" or current == "skull" then ns.SetMarkerLayout(kind, "iconColor", { r, g, b })
+        else ns.db.colors[kind] = { r, g, b }; ns.Changed() end
+    end))
+    local anchors, anchorOrder = {}, {}
+    for index, entry in ipairs(ns.MarkerAnchors) do anchors[entry[1]], anchorOrder[entry[1]] = entry[2], index end
+    local anchor = Add(widgets:ChoiceRow(controls, Text("Положение", "Position"), anchors,
+        function() return ns.MarkerLayout(kind).anchor end,
+        function(value) ns.SetMarkerLayout(kind, "anchor", value) end, anchorOrder))
+    local sliders = {}
+    local fields = {
+        { "size", Text("Базовый размер", "Base size"), 50, 250, 5, "%" },
+        { "opacity", Text("Непрозрачность", "Opacity"), 10, 100, 5, "%" },
+        { "x", Text("Смещение X", "X offset"), -32, 32, 1 },
+        { "y", Text("Смещение Y", "Y offset"), -24, 24, 1 },
+    }
+    for _, field in ipairs(fields) do
+        local key, label, low, high, step, suffix = unpack(field)
+        sliders[key] = Add(widgets:SliderRow(controls, label, low, high, step,
+            function() return ns.MarkerLayout(kind)[key] end,
+            function(value) ns.SetMarkerLayout(kind, key, value) end, suffix))
+    end
+    widgets:Help(sliders.size, Text("Размер до прибавки по порогам. Итог виден в предпросмотре.",
+        "The size before threshold bonuses. The preview shows the final size."))
+    widgets:Help(sliders.x, Text("Горизонтальное смещение от выбранной стороны полосы здоровья.",
+        "Horizontal offset from the selected side of the health bar."))
+    widgets:Help(sliders.y, Text("Вертикальное смещение от выбранной стороны полосы здоровья.",
+        "Vertical offset from the selected side of the health bar."))
+
+    local source = widgets:Label(preview, "", 10, T.muted)
+    source:SetPoint("TOPLEFT", 0, -29)
+    source:SetPoint("TOPRIGHT", 0, -29)
+    source:SetWordWrap(false)
+    local stage = Frame(preview, T.input, T.lineSoft)
+    stage:SetPoint("TOPLEFT", 0, -47)
+    stage:SetPoint("TOPRIGHT", 0, -47)
+    stage:SetHeight(76)
     if stage.SetClipsChildren then stage:SetClipsChildren(true) end
-    local sample = ns.CreateMarkerPreview(stage, previewSource)
+    local sample = ns.CreateMarkerPreview(stage, source)
     sample:SetPoint("CENTER")
-    local previewCounts = { killer = 25, defeated = 25 }
-    local previewCaption = Label(preview, "", 11, T.muted)
-    previewCaption:SetPoint("TOPLEFT", 12, -108)
-    local previewSlider = widgets:SliderRow(preview, "", 0, 60, 1,
+    local previewCounts = { killer = 25, attacker = 25, defeated = 25 }
+    local caption = widgets:Label(preview, "", 11, T.muted)
+    caption:SetPoint("TOPLEFT", stage, "BOTTOMLEFT", 0, -10)
+    local previewSlider = widgets:SliderRow(preview, "", 0, 999, 1,
         function() return previewCounts[kind] or 0 end, function(value)
             previewCounts[kind] = value
             frame:RefreshMarkers()
         end)
-    previewSlider:SetPoint("TOPLEFT", 10, -124)
-    previewSlider:SetPoint("TOPRIGHT", -10, -124)
-    Label(preview, Text("Итоговый размер", "Final size"), 11, T.muted):SetPoint("BOTTOMLEFT", 12, 12)
-    local finalSize = Label(preview, "", 14, T.brass)
-    finalSize:SetPoint("BOTTOMRIGHT", -12, 9)
-    local reset = Button(preview, Text("Сбросить оформление", "Reset appearance"), 165, function()
+    previewSlider:SetPoint("TOPLEFT", 0, -151)
+    previewSlider:SetPoint("TOPRIGHT", 0, -151)
+    local final = widgets:SettingRow(preview, Text("Итоговый размер", "Final size"))
+    final:SetPoint("LEFT", 14, 0)
+    final:SetPoint("RIGHT", -14, 0)
+    local finalSize = widgets:Label(final, "", 13, T.brass)
+    finalSize:SetPoint("RIGHT")
+    final.label:SetPoint("RIGHT", finalSize, "LEFT", -8, 0)
+    local rules = BuildThresholdPanel(frame, function() return kind end)
+    local reset = Button(frame, Text("Сбросить оформление", "Reset appearance"), 165, function()
         widgets:CloseColorPicker(color)
         ns.db.markerLayouts[kind], ns.db.colors[kind] = nil, nil
         ns.Changed()
     end)
+    reset:SetHeight(24)
+    reset:SetPoint("TOPLEFT", rules, "BOTTOMLEFT", 0, -10)
 
-    local controls = CreateFrame("Frame", nil, frame)
-    controls:SetPoint("TOPLEFT", preview, "TOPRIGHT", 14, 0)
-    controls:SetPoint("TOPRIGHT", -16, top - 38)
-    controls:SetHeight(194)
-    local rules = BuildThresholdPanel(frame, preview, controls, function() return kind end)
-    local style = Button(controls, "", 152, function(owner)
-        Select(owner, ns.MarkChoices, ns.MarkStyle(kind), function(value)
-            widgets:CloseColorPicker(color)
-            ns.db.marks[kind] = value
-            ns.Changed()
-        end)
-    end)
-    T:DropdownArrow(style, style.label)
-    style:SetPoint("TOPLEFT")
-    color = Button(controls, Text("Цвет", "Color"), 74, function(owner) OpenColor(owner, kind, ns.MarkStyle(kind)) end)
-    color:SetPoint("LEFT", style, "RIGHT", 8, 0)
-    color.label:SetPoint("CENTER", 6, 0)
-    color.swatch = color:CreateTexture(nil, "OVERLAY")
-    color.swatch:SetSize(9, 9)
-    color.swatch:SetPoint("LEFT", 7, 0)
-    color:HookScript("OnHide", function() widgets:CloseColorPicker(color) end)
-
-    local anchorRow = widgets:SettingRow(controls, Text("Положение", "Position"), 28)
-    anchorRow:SetPoint("TOPLEFT", style, "BOTTOMLEFT", 0, -4)
-    anchorRow:SetPoint("TOPRIGHT", 0, -34)
-    local anchor = Button(anchorRow, "", 152, function(owner)
-        Select(owner, ns.MarkerAnchors, ns.MarkerLayout(kind).anchor,
-            function(value) ns.SetMarkerLayout(kind, "anchor", value) end)
-    end)
-    T:DropdownArrow(anchor, anchor.label)
-    anchor:SetHeight(24)
-    anchor:SetPoint("RIGHT", -2, 0)
-    local sliders = {}
-    local fields = {
-        { "size", Text("Базовый размер", "Base size"), 50, 250, 5, "%" },
-        { "opacity", Text("Прозрачность", "Opacity"), 10, 100, 5, "%" },
-        { "x", Text("Смещение X", "X offset"), -32, 32, 1 },
-        { "y", Text("Смещение Y", "Y offset"), -24, 24, 1 },
-    }
-    local function PlaceSlider(slider, y)
-        slider:SetPoint("TOPLEFT", 0, y)
-        slider:SetPoint("TOPRIGHT", 0, y)
+    local layingOut, lastLayoutWidth, layoutKey
+    local function Layout()
+        if layingOut then return end
+        layingOut = true
+        local width = math.min(820, math.max(1, frame:GetWidth() - 32))
+        category:ClearAllPoints()
+        category:SetPoint("TOPLEFT", 16, top)
+        category:SetWidth(width)
+        category:Refresh()
+        controls:ClearAllPoints()
+        preview:ClearAllPoints()
+        local stacked = width < 680
+        if stacked then
+            preview:SetPoint("TOPLEFT", category, "BOTTOMLEFT", 0, -12)
+            preview:SetWidth(width)
+            controls:SetPoint("TOPLEFT", preview, "BOTTOMLEFT", 0, -12)
+            controls:SetWidth(width)
+        else
+            local left = math.min(420, math.floor((width - 16) * .56))
+            controls:SetPoint("TOPLEFT", category, "BOTTOMLEFT", 0, -12)
+            controls:SetWidth(left)
+            preview:SetPoint("TOPLEFT", controls, "TOPRIGHT", 16, 0)
+            preview:SetWidth(width - left - 16)
+        end
+        local y = -33
+        for _, row in ipairs(rows) do
+            if row.markerVisible then
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", controls, "TOPLEFT", 0, y)
+                row:SetPoint("TOPRIGHT", controls, "TOPRIGHT", 0, y)
+                y = y - row:GetHeight() - 2
+            end
+        end
+        controls:SetHeight(-y + 6)
+        controls:LayoutTitleRule()
+        preview:LayoutTitleRule()
+        local height = stacked and (preview:GetHeight() + 12 + controls:GetHeight()) or math.max(preview:GetHeight(), controls:GetHeight())
+        rules:ClearAllPoints()
+        rules:SetPoint("TOPLEFT", category, "BOTTOMLEFT", 0, -height - 24)
+        rules:SetWidth(width)
+        rules:LayoutColumns(width)
+        frame:SetHeight(math.abs(top) + category:GetHeight() + 12 + height + 12 + rules:GetHeight() + 10 + 24 + 12)
+        lastLayoutWidth = frame:GetWidth()
+        layingOut = nil
     end
-    for _, field in ipairs(fields) do
-        local key, label, low, high, step, suffix = unpack(field)
-        local slider = widgets:SliderRow(controls, label, low, high, step,
-            function() return ns.MarkerLayout(kind)[key] end,
-            function(value) ns.SetMarkerLayout(kind, key, value) end, suffix)
-        slider:SetHeight(26)
-        sliders[key] = slider
+    local function Visible(row, shown)
+        row.markerVisible = shown == true
+        row:SetShown(row.markerVisible)
     end
-    PlaceSlider(sliders.x, -117)
-    PlaceSlider(sliders.y, -144)
-
-    function frame:RefreshMarkers()
+    function frame:RefreshMarkers(forceLayout)
         local current = ns.MarkStyle(kind)
         local icon = ns.IsMarkerIcon(current)
         local layout = ns.MarkerLayout(kind)
-        category.label:SetText(ns.Kinds[kind].label)
-        style.label:SetText(ChoiceLabel(ns.MarkChoices, current))
-        local previewCount = previewCounts[kind]
-        local size, active = ns.MarkerSizePercent(kind, current, previewCount)
+        local count = previewCounts[kind]
+        local size, active = ns.MarkerSizePercent(kind, current, count)
         local eligible = ns.MarkerScalingAvailable(kind, current)
-        previewCaption:SetShown(eligible)
+        category:Refresh()
+        enabled:Refresh(false)
+        Visible(color, current ~= "off")
+        Visible(anchor, icon)
+        Visible(sliders.size, icon or current == "edge")
+        Visible(sliders.opacity, current ~= "off")
+        Visible(sliders.x, icon)
+        Visible(sliders.y, icon)
+        caption:SetShown(eligible)
         previewSlider:SetShown(eligible)
-        previewCaption:SetText(kind == "killer" and Text("Сколько раз тебя убил", "Times they killed you")
+        caption:SetText(kind == "killer" and Text("Сколько раз тебя убил", "Times they killed you")
+            or kind == "attacker" and Text("Эпизодов урона по вам", "Damage episodes against you")
             or Text("Сколько раз ты его убил", "Times you killed them"))
         local scaling = ns.MarkerScaling(kind)
-        previewSlider:SetRange(0, math.max(60, scaling.tiers[scaling.count].kills + 5))
         previewSlider:Refresh()
         finalSize:SetText((icon or current == "edge") and ("%.0f%%"):format(size) or "—")
-        sample:RefreshMarker(current, kind, previewCount)
+        preview:SetHeight(eligible and 224 or 170)
+        sample:RefreshMarker(current, kind, count)
         rules:Refresh(kind, current, layout.size, active)
-        color:SetShown(current ~= "off")
-        local stock = current == "swords" or current == "skull"
-        local r, g, b = unpack(stock and (layout.iconColor or T.text) or ns.Color(kind))
-        color.swatch:SetColorTexture(r, g, b, 1)
-        anchorRow:SetShown(icon)
-        anchor.label:SetText(ChoiceLabel(ns.MarkerAnchors, layout.anchor))
-        sliders.size:SetShown(icon or current == "edge")
-        sliders.opacity:SetShown(current ~= "off")
-        PlaceSlider(sliders.size, icon and -63 or -33)
-        PlaceSlider(sliders.opacity, icon and -90 or current == "edge" and -60 or -33)
-        sliders.x:SetShown(icon)
-        sliders.y:SetShown(icon)
-        for _, slider in pairs(sliders) do slider:Refresh() end
+        local nextKey = kind .. ":" .. current .. ":" .. scaling.count
+        if forceLayout or nextKey ~= layoutKey then
+            layoutKey = nextKey
+            final:ClearAllPoints()
+            final:SetPoint("TOPLEFT", 0, eligible and -187 or -133)
+            final:SetPoint("TOPRIGHT", 0, eligible and -187 or -133)
+            Layout()
+        end
+        for _, row in ipairs(rows) do row:Refresh() end
     end
-
-    local mark = Button(frame, Text("Отметить цель", "Mark target"), 145, ns.MarkTarget)
-    mark:SetPoint("TOPLEFT", rules, "BOTTOMLEFT", 0, -12)
-    reset:SetPoint("LEFT", mark, "RIGHT", 8, 0)
     markerPanels[frame] = true
-    frame:HookScript("OnShow", frame.RefreshMarkers)
+    frame:HookScript("OnSizeChanged", function(_, width) if width ~= lastLayoutWidth then Layout() end end)
+    frame:HookScript("OnShow", function(self)
+        self:RefreshMarkers(true)
+        C_Timer.After(0, function() if self:IsVisible() then self:RefreshMarkers(true) end end)
+    end)
+    frame:HookScript("OnHide", function() widgets:CloseColorPicker(color) end)
     frame:RefreshMarkers()
 end
 
